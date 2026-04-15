@@ -5,12 +5,10 @@ Zero cost, pure Python, runs on every item before LLM scoring.
 
 import re
 from datetime import datetime, timezone, timedelta
-from src.sources.base import SourceItem
 from src.utils.logger import get_logger
 
 log = get_logger("pipeline.pre_filter")
 
-# ── Include signals: items containing these are likely "builds" ──
 BUILD_KEYWORDS = {
     "built", "launched", "shipped", "released", "open-sourced", "open sourced",
     "demo", "prototype", "tool", "app", "framework", "library", "model",
@@ -20,90 +18,88 @@ BUILD_KEYWORDS = {
     "alpha", "mvp", "repo", "github", "playground", "api",
 }
 
-# ── Exclude signals: items matching these are noise ──
 NOISE_PATTERNS = [
     r"\bhiring\b|\bjob\b|\brecruiting\b|\bwe.re looking\b",
-    r"\bcourse\b|\btutorial\b|\blearn how\b|\bfree course\b",
-    r"\bwhat do you think\b|\bopinion\b|\bam i the only\b",
-    r"\bmeme\b|\bfunny\b|\bjoke\b",
-    r"\bprompt engineering\b.*\btips\b",
+    r"\bcourse\b|\btutorial\b|\bhow to learn\b|\bbeginner.s guide\b",
+    r"\bmeme\b|\bfunny\b|\bhumor\b",
+    r"\bopinion\b|\brant\b|\bhot take\b|\bunpopular opinion\b",
+    r"\bstock\b|\binvest\b|\bcrypto\b|\btoken\b|\bnft\b",
 ]
-
-# Compiled for performance
 _noise_re = re.compile("|".join(NOISE_PATTERNS), re.IGNORECASE)
 
 
-def pre_filter(items: list[SourceItem], seen_urls: set[str] | None = None) -> list[SourceItem]:
-    """
-    Apply rule-based filters to raw source items.
-    Returns items that pass all filters — candidates for LLM scoring.
-    """
+def _get(item, key, default=""):
+    if isinstance(item, dict):
+        return item.get(key, default)
+    return getattr(item, key, default)
+
+
+def _get_age_hours(item) -> float:
+    posted_at = _get(item, "posted_at", None)
+    if posted_at and isinstance(posted_at, datetime):
+        delta = datetime.now(timezone.utc) - posted_at
+        return max(delta.total_seconds() / 3600, 0.1)
+    date_str = _get(item, "date", "")
+    if date_str:
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            delta = datetime.now(timezone.utc) - dt
+            return max(delta.total_seconds() / 3600, 0.1)
+        except (ValueError, AttributeError):
+            pass
+    age = _get(item, "age_hours", None)
+    if age is not None:
+        return float(age)
+    return 24.0
+
+
+def _get_text(item) -> str:
+    title = _get(item, "title", "")
+    desc = _get(item, "description", "") or _get(item, "summary", "")
+    return f"{title} {desc}".lower()
+
+
+def pre_filter(items: list, seen_urls: set | None = None) -> list:
     if seen_urls is None:
         seen_urls = set()
-
     passed = []
     stats = {"total": len(items), "too_old": 0, "duplicate": 0, "noise": 0, "low_engagement": 0, "passed": 0}
-
     for item in items:
-        # ── Age filter: skip posts older than 36 hours ──
-        if item.age_hours > 36:
+        if _get_age_hours(item) > 36:
             stats["too_old"] += 1
             continue
-
-        # ── Dedup: skip URLs seen in last 7 days ──
-        if item.url in seen_urls or item.external_url in seen_urls:
+        url = _get(item, "url", "")
+        ext_url = _get(item, "external_url", "")
+        if url in seen_urls or ext_url in seen_urls:
             stats["duplicate"] += 1
             continue
-
-        # ── Noise filter: skip hiring, courses, memes, opinion posts ──
-        combined_text = f"{item.title} {item.description}"
-        if _noise_re.search(combined_text):
+        text = _get_text(item)
+        if _noise_re.search(text):
             stats["noise"] += 1
             continue
-
-        # ── Engagement floor (source-specific) ──
-        # Arxiv and HuggingFace get a pass — they don't have traditional engagement
-        if item.source not in ("arxiv", "huggingface"):
-            if item.engagement < _min_engagement(item.source):
-                stats["low_engagement"] += 1
-                continue
-
-        # ── Build signal boost (optional — items with build keywords rank higher) ──
-        item_text_lower = combined_text.lower()
-        has_build_signal = any(kw in item_text_lower for kw in BUILD_KEYWORDS)
-        has_link = bool(item.external_url)
-
-        # Items with build keywords OR external links are strong candidates
-        # Items with neither might still pass if engagement is very high
-        if not has_build_signal and not has_link and not item.is_open_source:
-            if item.engagement < _min_engagement(item.source) * 3:
-                # Need 3x engagement to pass without build signal
-                stats["noise"] += 1
-                continue
-
-        # Track URL for dedup
-        seen_urls.add(item.url)
-        if item.external_url:
-            seen_urls.add(item.external_url)
-
-        passed.append(item)
+        source = _get(item, "source", "")
+        engagement = _get(item, "engagement", 0) or 0
+        if isinstance(engagement, str):
+            try:
+                engagement = int(engagement)
+            except ValueError:
+                engagement = 0
+        min_eng = _min_engagement(source)
+        if engagement < min_eng:
+            stats["low_engagement"] += 1
+            continue
         stats["passed"] += 1
-
+        passed.append(item)
     log.info("pre_filter_complete", **stats)
     return passed
 
 
 def _min_engagement(source: str) -> int:
-    """Source-specific minimum engagement thresholds."""
     thresholds = {
-        "reddit": 50,
-        "hackernews": 10,
-        "producthunt": 20,
-        "github_trending": 10,
-        "devto": 30,
-        "arxiv": 0,        # No engagement metric
-        "huggingface": 3,   # Likes are lower scale
-        "twitter": 50,      # Likes + RTs + replies
-        "youtube": 100,     # Views + weighted likes
+        "reddit": 10, "hackernews": 5, "github_trending": 50,
+        "producthunt": 20, "twitter": 10, "youtube": 100,
+        "arxiv": 0, "devto": 5, "huggingface": 0,
     }
-    return thresholds.get(source, 10)
+    return thresholds.get(source, 0)
