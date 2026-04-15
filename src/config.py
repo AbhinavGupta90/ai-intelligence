@@ -5,8 +5,6 @@ All tuneable parameters live in config.yml, secrets in .env/GitHub Secrets.
 import os
 import yaml
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
 
 ROOT_DIR = Path(__file__).parent.parent
 CONFIG_PATH = ROOT_DIR / "config.yml"
@@ -24,6 +22,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN", "")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+PRODUCTHUNT_API_TOKEN = os.getenv("PRODUCTHUNT_API_TOKEN", "")
 
 # Configuration from yaml
 DRY_RUN = _cfg.get("dry_run", False)
@@ -34,6 +33,15 @@ BONUSES = _cfg.get("bonuses", {})
 SOURCES_CFG = _cfg.get("sources", {})
 SCORING_CFG = _cfg.get("scoring", {})
 DELIVERY_CFG = _cfg.get("delivery", {})
+TASTE_CFG = _cfg.get("taste", {})
+
+# Velocity detection config
+VELOCITY_WINDOW_HOURS = _cfg.get("velocity", {}).get("window_hours", 6)
+VELOCITY_ALERT_PERCENTILE = _cfg.get("velocity", {}).get("alert_percentile", 95)
+
+# Alert config
+MIN_SCORE_ALERT = _cfg.get("alerts", {}).get("min_score", 8.0)
+MAX_REALTIME_ALERTS = _cfg.get("alerts", {}).get("max_per_day", 5)
 
 # Data directories
 DATA_DIR = ROOT_DIR / "data"
