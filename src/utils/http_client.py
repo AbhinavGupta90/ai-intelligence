@@ -43,7 +43,7 @@ async def fetch_json(
         try:
             resp = await client.get(url, params=params, headers=headers)
 
-            # Rate limited — back off
+            # Rate limited â back off
             if resp.status_code == 429:
                 wait = float(resp.headers.get("Retry-After", retry_delay * 2))
                 log.warning("rate_limited", url=url, wait_seconds=wait)
@@ -89,3 +89,6 @@ async def close_client():
     if _client and not _client.is_closed:
         await _client.aclose()
         _client = None
+
+# Alias for backward compatibility
+http_get = fetch_json
