@@ -6,7 +6,7 @@ Formats and sends the daily digest via Telegram Bot API.
 import os
 import logging
 import asyncio
-import aiohttp
+import httpx
 from datetime import datetime, timezone
 
 log = logging.getLogger("telegram")
@@ -165,7 +165,7 @@ def format_daily_digest(
     return "\n".join(lines)
 
 
-async def _send_telegram_message(text: str, session: aiohttp.ClientSession) -> bool:
+async def _send_telegram_message(text: str, client: httpx.AsyncClient) -> bool:
     """Send a single message via Telegram Bot API. Returns True on success."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
@@ -175,12 +175,12 @@ async def _send_telegram_message(text: str, session: aiohttp.ClientSession) -> b
         "disable_web_page_preview": True,
     }
     try:
-        async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            data = await resp.json()
-            if not data.get("ok"):
-                log.error(f"Telegram API error: {data.get('description', 'unknown')}")
-                return False
-            return True
+        resp = await client.post(url, json=payload, timeout=30)
+        data = resp.json()
+        if not data.get("ok"):
+            log.error(f"Telegram API error: {data.get('description', 'unknown')}")
+            return False
+        return True
     except Exception as e:
         log.error(f"Telegram send failed: {e}")
         return False
@@ -230,9 +230,9 @@ async def send_daily_digest(
     log.info(f"Sending digest: {len(items)} items in {len(chunks)} message(s)")
 
     success = True
-    async with aiohttp.ClientSession() as session:
+    async with httpx.AsyncClient() as client:
         for i, chunk in enumerate(chunks):
-            ok = await _send_telegram_message(chunk, session)
+            ok = await _send_telegram_message(chunk, client)
             if not ok:
                 log.error(f"Failed to send chunk {i+1}/{len(chunks)}")
                 success = False
