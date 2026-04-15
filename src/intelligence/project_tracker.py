@@ -2,10 +2,10 @@
 Project tracking intelligence -- identifies trending and breakout projects.
 Maintains projects.json with mention counts, score trends, and source tracking.
 """
+
 import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-
 from src.config import KNOWLEDGE_DIR
 from src.utils.logger import get_logger
 
@@ -13,10 +13,10 @@ log = get_logger("intelligence.project_tracker")
 
 PROJECTS_PATH = KNOWLEDGE_DIR / "projects.json"
 
+
 def get_trending_projects(min_mentions=2) -> list[dict]:
     """
     Find projects mentioned across multiple sources or days.
-
     Returns list of dicts with keys:
     - name: project name
     - mention_count: total mentions
@@ -26,7 +26,6 @@ def get_trending_projects(min_mentions=2) -> list[dict]:
     """
     projects = _load_json(PROJECTS_PATH, {})
     trending = []
-
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=7)
 
@@ -48,7 +47,6 @@ def get_trending_projects(min_mentions=2) -> list[dict]:
         if recent_scores:
             avg_score = sum(recent_scores) / len(recent_scores)
             momentum = recent_scores[-1] - recent_scores[0] if len(recent_scores) > 1 else 0
-
             trending.append({
                 "name": name,
                 "mention_count": mentions,
@@ -62,10 +60,11 @@ def get_trending_projects(min_mentions=2) -> list[dict]:
     trending.sort(key=lambda x: x["mention_count"], reverse=True)
     return trending
 
+
 def get_breakout_projects(days=7) -> list[dict]:
     """
-    Find projects that recently gained significant momentum (score trend going up).
-
+    Find projects that recently gained significant momentum
+    (score trend going up).
     Returns list of dicts with keys:
     - name: project name
     - momentum: score delta from start to end of window
@@ -74,7 +73,6 @@ def get_breakout_projects(days=7) -> list[dict]:
     """
     projects = _load_json(PROJECTS_PATH, {})
     breakouts = []
-
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
 
@@ -109,10 +107,39 @@ def get_breakout_projects(days=7) -> list[dict]:
     breakouts.sort(key=lambda x: x["momentum"], reverse=True)
     return breakouts
 
+
+def get_project_stats() -> dict:
+    """
+    Get aggregate statistics about tracked projects.
+    Returns dict with total count, average mentions, top projects, etc.
+    Used by predictor for context gathering.
+    """
+    projects = _load_json(PROJECTS_PATH, {})
+    if not projects:
+        return {"total_projects": 0, "avg_mentions": 0, "top_projects": [], "multi_source_count": 0}
+
+    mention_counts = [d.get("mentions", 0) for d in projects.values()]
+    total = len(projects)
+    avg_mentions = sum(mention_counts) / total if total else 0
+
+    # Top 5 by mentions
+    sorted_projects = sorted(projects.items(), key=lambda x: x[1].get("mentions", 0), reverse=True)
+    top_projects = [
+        {"name": name, "mentions": data.get("mentions", 0), "sources": len(data.get("sources", []))}
+        for name, data in sorted_projects[:5]
+    ]
+
+    return {
+        "total_projects": total,
+        "avg_mentions": round(avg_mentions, 1),
+        "top_projects": top_projects,
+        "multi_source_count": sum(1 for d in projects.values() if len(d.get("sources", [])) > 1),
+    }
+
+
 def update_project_tracking(scored_items: list[dict]):
     """
     Update projects.json with new items.
-
     For each item with a "project" field:
     - Increment mention count
     - Add source name to sources list
@@ -157,6 +184,7 @@ def update_project_tracking(scored_items: list[dict]):
     _save_json(PROJECTS_PATH, projects)
     log.info(f"Updated tracking for {len([i for i in scored_items if i.get('project')])} project mentions")
 
+
 def _load_json(path: Path, default) -> dict:
     """Load JSON file with default fallback."""
     if not path.exists():
@@ -167,6 +195,7 @@ def _load_json(path: Path, default) -> dict:
     except Exception as e:
         log.error(f"Failed to load {path}: {e}")
         return default
+
 
 def _save_json(path: Path, data: dict):
     """Save JSON to file."""
