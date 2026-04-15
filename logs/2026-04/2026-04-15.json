@@ -1,1 +1,111 @@
-q«¶js_[ë‹q
+{
+  "date": "2026-04-15",
+  "run_time": "2026-04-15T02:19:44.536142+00:00",
+  "pipeline_stats": {
+    "total_scanned": 21,
+    "pre_filtered": 21,
+    "llm_scored": 21,
+    "delivered": 10,
+    "sources_active": 9,
+    "sources_total": 9,
+    "source_errors": [],
+    "source_counts": {
+      "reddit": 0,
+      "hackernews": 0,
+      "github_trending": 21,
+      "producthunt": 0,
+      "arxiv": 0,
+      "devto": 0,
+      "huggingface": 0,
+      "twitter": 0,
+      "youtube": 0
+    }
+  },
+  "category_counts": {
+    "other": 21
+  },
+  "velocity_alerts": 1,
+  "items": [
+    {
+      "item_id": "gh-trend-NousResearch-hermes-agent",
+      "title": "NousResearch/hermes-agent \u2014 The agent that grows with you",
+      "score": 8.8,
+      "novelty": 5,
+      "depth": 5,
+      "wow": 5,
+      "practical": 5,
+      "category": "other",
+      "summary": "\u2b50 3 total | +8,301 today \u2014 The agent that grows with you",
+      "why_interesting": "Scored by engagement (AI scoring unavailable)",
+      "builder_type": "unknown",
+      "url": "https://github.com/NousResearch/hermes-agent",
+      "source": "github_trending",
+      "external_url": "",
+      "engagement": 8301,
+      "velocity": 345.88,
+      "velocity_flag": true,
+      "has_demo": false,
+      "is_open_source": true,
+      "author": "NousResearch",
+      "posted_at": null,
+      "tags": [
+        "python"
+      ],
+      "bonus": 0.8
+    },
+    {
+      "item_id": "gh-trend-thedotmack-claude-mem",
+      "title": "thedotmack/claude-mem \u2014 A Claude Code plugin that automatically captures everything Claude does during your coding sessions,",
+      "score": 8.5,
+      "novelty": 5,
+      "depth": 5,
+      "wow": 5,
+      "practical": 5,
+      "category": "other",
+      "summary": "\u2b50 3 total | +2,997 today \u2014 A Claude Code plugin that automatically captures everything Claude does during your coding sessions, compresses it with AI (using Claude's agent-sdk), and injects relevant c",
+      "why_interesting": "Scored by engagement (AI scoring unavailable)",
+      "builder_type": "unknown",
+      "url": "https://github.com/thedotmack/claude-mem",
+      "source": "github_trending",
+      "external_url": "",
+      "engagement": 2997,
+      "velocity": 124.88,
+      "velocity_flag": false,
+      "has_demo": false,
+      "is_open_source": true,
+      "author": "thedotmack",
+      "posted_at": null,
+      "tags": [
+        "typescript"
+      ],
+      "bonus": 0.5
+    },
+    {
+      "item_id": "gh-trend-multica-ai-multica",
+      "title": "multica-ai/multica \u2014 The open-source managed agents platform. Turn coding agents into real teammates \u2014 assign tasks, trac",
+      "score": 8.5,
+      "novelty": 5,
+      "depth": 5,
+      "wow": 5,
+      "practical": 5,
+      "category": "other",
+      "summary": "\u2b50 3 total | +1,503 today \u2014 The open-source managed agents platform. Turn coding agents into real teammates \u2014 assign tasks, track progress, compound skills.",
+      "why_interesting": "Scored by engagement (AI scoring unavailable)",
+      "builder_type": "unknown",
+      "url": "https://github.com/multica-ai/multica",
+      "source": "github_trending",
+      "external_url": "",
+      "engagement": 1503,
+      "velocity": 62.62,
+      "velocity_flag": false,
+      "has_demo": false,
+      "is_open_source": true,
+      "author": "multica-ai",
+      "posted_at": null,
+      "tags": [
+        "typescript"
+      ],
+      "bonus": 0.5
+    }
+  ]
+}
