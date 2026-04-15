@@ -89,7 +89,8 @@ def _format_item(rank: int, item: dict) -> str:
     meta_parts = [cat]
     if source_name:
         meta_parts.append(f"via {source_name}")
-    meta_line = f"   {' \u2022 '.join(meta_parts)}"
+    separator = " \u2022 "
+    meta_line = f"   {separator.join(meta_parts)}"
 
     # Summary (first 150 chars)
     summary = item.get("summary", "") or item.get("description", "")
