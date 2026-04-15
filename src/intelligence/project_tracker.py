@@ -1,10 +1,11 @@
 """
-Project tracker â€” monitors project momentum over time.
-Detects projects gaining cross-source traction and score trends.
+Project tracking intelligence -- identifies trending and breakout projects.
+Maintains projects.json with mention counts, score trends, and source tracking.
 """
-
 import json
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
 from src.config import KNOWLEDGE_DIR
 from src.utils.logger import get_logger
 
@@ -12,84 +13,166 @@ log = get_logger("intelligence.project_tracker")
 
 PROJECTS_PATH = KNOWLEDGE_DIR / "projects.json"
 
-
-def get_trending_projects(min_mentions: int = 2) -> list[dict]:
+def get_trending_projects(min_mentions=2) -> list[dict]:
     """
-    Find projects mentioned across multiple sources or multiple days.
-    Cross-source traction = strong signal.
+    Find projects mentioned across multiple sources or days.
+
+    Returns list of dicts with keys:
+    - name: project name
+    - mention_count: total mentions
+    - sources: set of source names mentioning it
+    - avg_score: average score across mentions
+    - momentum: trend in score over time
     """
     projects = _load_json(PROJECTS_PATH, {})
     trending = []
 
-    for url, data in projects.items():
-        if data.get("mentions", 0) >= min_mentions:
-            scores = data.get("score_trend", [])
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=7)
+
+    for name, data in projects.items():
+        mentions = data.get("mentions", 0)
+        if mentions < min_mentions:
+            continue
+
+        sources = data.get("sources", [])
+        scores = data.get("scores", [])
+        timestamps = data.get("timestamps", [])
+
+        # Filter to recent mentions
+        recent_scores = [
+            scores[i] for i in range(len(timestamps))
+            if datetime.fromisoformat(timestamps[i]) > cutoff
+        ]
+
+        if recent_scores:
+            avg_score = sum(recent_scores) / len(recent_scores)
+            momentum = recent_scores[-1] - recent_scores[0] if len(recent_scores) > 1 else 0
+
             trending.append({
-                "title": data.get("title", "Unknown"),
-                "url": url,
-                "mentions": data["mentions"],
-                "sources": data.get("sources", []),
-                "category": data.get("category", "other"),
-                "latest_score": scores[-1] if scores else 0,
-                "score_trend": _trend_direction(scores),
-                "first_seen": data.get("first_seen", ""),
+                "name": name,
+                "mention_count": mentions,
+                "sources": list(set(sources)),
+                "avg_score": avg_score,
+                "momentum": momentum,
+                "recent_mentions": len(recent_scores)
             })
 
-    trending.sort(key=lambda x: (-x["mentions"], -x["latest_score"]))
-    return trending[:10]
+    # Sort by mention count descending
+    trending.sort(key=lambda x: x["mention_count"], reverse=True)
+    return trending
 
-
-def get_breakout_projects() -> list[dict]:
+def get_breakout_projects(days=7) -> list[dict]:
     """
-    Projects that went from 1 mention to 3+ quickly,
-    or appeared on 3+ different sources.
+    Find projects that recently gained significant momentum (score trend going up).
+
+    Returns list of dicts with keys:
+    - name: project name
+    - momentum: score delta from start to end of window
+    - recent_score: most recent score
+    - velocity: rate of score increase
     """
     projects = _load_json(PROJECTS_PATH, {})
     breakouts = []
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
 
-    for url, data in projects.items():
-        sources = data.get("sources", [])
-        mentions = data.get("mentions", 0)
-        first_seen = data.get("first_seen", "2020-01-01")
+    for name, data in projects.items():
+        scores = data.get("scores", [])
+        timestamps = data.get("timestamps", [])
 
-        # Cross-source: 3+ different sources
-        if len(sources) >= 3:
+        # Filter to recent window
+        recent_indices = [
+            i for i in range(len(timestamps))
+            if datetime.fromisoformat(timestamps[i]) > cutoff
+        ]
+
+        if len(recent_indices) < 2:
+            continue
+
+        recent_scores = [scores[i] for i in recent_indices]
+        momentum = recent_scores[-1] - recent_scores[0]
+
+        # Only include projects with positive momentum
+        if momentum > 0:
+            velocity = momentum / len(recent_scores)
             breakouts.append({
-                "title": data.get("title", "Unknown"),
-                "url": url,
-                "sources": sources,
-                "mentions": mentions,
-                "reason": f"Appeared on {len(sources)} sources",
-            })
-        # Recent + fast mentions
-        elif first_seen >= cutoff and mentions >= 3:
-            breakouts.append({
-                "title": data.get("title", "Unknown"),
-                "url": url,
-                "sources": sources,
-                "mentions": mentions,
-                "reason": f"{mentions} mentions in first week",
+                "name": name,
+                "momentum": momentum,
+                "recent_score": recent_scores[-1],
+                "velocity": velocity,
+                "mentions_in_window": len(recent_indices)
             })
 
-    breakouts.sort(key=lambda x: -x["mentions"])
-    return breakouts[:5]
+    # Sort by momentum descending
+    breakouts.sort(key=lambda x: x["momentum"], reverse=True)
+    return breakouts
 
+def update_project_tracking(scored_items: list[dict]):
+    """
+    Update projects.json with new items.
 
-def get_project_stats() -> dict:
-    """Summary stats about tracked projects."""
+    For each item with a "project" field:
+    - Increment mention count
+    - Add source name to sources list
+    - Append score and timestamp to history
+    """
     projects = _load_json(PROJECTS_PATH, {})
-    if not projects:
-        return {"total": 0, "multi_mention": 0, "multi_source": 0}
+    now = datetime.now(timezone.utc).isoformat()
 
-    return {
-        "total": len(projects),
-        "multi_mention": sum(1 for p in projects.values() if p.get("mentions", 0) >= 2),
-        "multi_source": sum(1 for p in projects.values() if len(p.get("sources", [])) >= 2),
-    }
+    for item in scored_items:
+        project_name = item.get("project")
+        if not project_name:
+            continue
 
+        if project_name not in projects:
+            projects[project_name] = {
+                "mentions": 0,
+                "sources": [],
+                "scores": [],
+                "timestamps": [],
+                "created_at": now
+            }
 
-def _trend_direction(scores: list[float]) -> str:
-    """Simple trend: rising, falling, or stable."""
-   !¥˜±•¸¡Í½É•Ì¤€ð€Èè(€€€€€€€É•ÑÕÉ¸€‰¹•Üˆ(€€€É••¹Ð€ôÍ½É•Íl´Åt(€€€½±‘•È€ôÍ½É•ÍlÁt(€€€¥˜É••¹Ð€ø½±‘•È€¨€Ä¸Äè(€€€€€€€É•ÑÕÉ¸€‰É¥Í¥¹œˆ(€€€•±¥˜É••¹Ð€ð½±‘•È€¨€À¸äè(€€€€€€€É•ÑÕÉ¸€‰™…±±¥¹œˆ(€€€É•ÑÕÉ¸€‰ÍÑ…‰±”ˆ(()‘•˜}±½…‘}©Í½¸¡Á…Ñ °‘•™…Õ±Ð¤è(€€€¥˜¹½ÐÁ…Ñ ¹•á¥ÍÑÌ ¤è(€€€€€€€É•ÑÕÉ¸‘•™…Õ±Ð(€€€ÑÉäè(€€€€€€€Ý¥Ñ ½Á•¸¡Á…Ñ °€‰Èˆ¤…Ì˜è(€€€€€€€€€€€É•ÑÕÉ¸©Í½¸¹±½…¡˜¤(€€€•á•ÁÐ€¡©Í½¸¹)M=9•½‘•ÉÉ½È°-•åÉÉ½È¤è(€€€€€€€É•ÑÕÉ¸‘•™…Õ±Ð(
+        data = projects[project_name]
+        data["mentions"] = data.get("mentions", 0) + 1
+        data["mentions_updated_at"] = now
+
+        # Track source if present
+        source = item.get("source", "unknown")
+        if source not in data.get("sources", []):
+            data.setdefault("sources", []).append(source)
+
+        # Append score and timestamp
+        score = item.get("final_score", 0)
+        data.setdefault("scores", []).append(score)
+        data.setdefault("timestamps", []).append(now)
+
+        # Keep only last 100 scores to avoid unbounded growth
+        if len(data["scores"]) > 100:
+            data["scores"] = data["scores"][-100:]
+            data["timestamps"] = data["timestamps"][-100:]
+
+    _save_json(PROJECTS_PATH, projects)
+    log.info(f"Updated tracking for {len([i for i in scored_items if i.get('project')])} project mentions")
+
+def _load_json(path: Path, default) -> dict:
+    """Load JSON file with default fallback."""
+    if not path.exists():
+        return default
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        log.error(f"Failed to load {path}: {e}")
+        return default
+
+def _save_json(path: Path, data: dict):
+    """Save JSON to file."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        log.error(f"Failed to save {path}: {e}")

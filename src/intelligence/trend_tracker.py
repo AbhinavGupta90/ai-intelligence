@@ -1,10 +1,11 @@
 """
-Trend tracker — detects rising, declining, and newly emerging categories.
-Uses weekly category snapshots from knowledge_graph to compute deltas.
+Trend tracking intelligence -- identifies category trends, sparklines, and hot streaks.
+Maintains categories.json with daily item counts and trending analysis.
 """
-
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
 from src.config import KNOWLEDGE_DIR
 from src.utils.logger import get_logger
 
@@ -12,123 +13,202 @@ log = get_logger("intelligence.trend_tracker")
 
 CATEGORIES_PATH = KNOWLEDGE_DIR / "categories.json"
 
-
-def get_category_trends(weeks_back: int = 4) -> dict:
+def get_category_trends(weeks_back=4) -> dict:
     """
-    Analyze category trends over the specified window.
-    Returns:
-        {
-            "rising": [{"category": str, "from": int, "to": int, "change_pct": int, "streak": int}],
-            "declining": [{"category": str, "from": int, "to": int, "change_pct": int}],
-            "new": [{"category": str, "count": int}],
-            "hot_streak": str | None  # category trending for 3+ consecutive days
-        }
+    Identify rising, declining, new, and hot-streak categories.
+
+    Returns dict with keys:
+    - rising: list of categories with positive momentum
+    - declining: list of categories with negative momentum
+    - new: list of categories that appeared in the last week
+    - hot_streak: category with longest consecutive high-count days (or None)
     """
-    data = _load_json(CATEGORIES_PATH, {})
-    sorted_weeks = sorted(data.keys())
+    categories = _load_json(CATEGORIES_PATH, {})
 
-    if len(sorted_weeks) < 2:
-        return {"rising": [], "declining": [], "new": [], "hot_streak": None}
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(weeks=weeks_back)
 
-    # Compare last two weeks
-    recent_key = sorted_weeks[-1]
-    prev_key = sorted_weeks[-2]
-    recent = data[recent_key]
-    prev = data[prev_key]
-
-    rising, declining, new_cats = [], [], []
-    all_cats = set(list(recent.keys()) + list(prev.keys()))
-
-    for cat in all_cats:
-        curr = recent.get(cat, 0)
-        prev_val = prev.get(cat, 0)
-
-        if prev_val == 0 and curr > 0:
-            new_cats.append({"category": cat, "count": curr})
-        elif prev_val > 0:
-            change = ((curr - prev_val) / prev_val) * 100
-            entry = {"category": cat, "from": prev_val, "to": curr, "change_pct": round(change)}
-
-            if change >= 20:
-                # Check streak — how many consecutive weeks has this risen?
-                entry["streak"] = _calculate_streak(data, sorted_weeks, cat)
-                rising.append(entry)
-            elif change <= -20:
-                declining.append(entry)
-
-    rising.sort(key=lambda x: x["change_pct"], reverse=True)
-    declining.sort(key=lambda x: x["change_pct"])
-
-    # Find hot streak (rising 3+ weeks)
-    hot_streak = None
-    for r in rising:
-        if r.get("streak", 0) >= 3:
-            hot_streak = f"{r['category']} ({r['streak']} consecutive weeks trending)"
-            break
-
-    return {
-        "rising": rising[:5],
-        "declining": declining[:5],
-        "new": new_cats,
-        "hot_streak": hot_streak,
+    trends = {
+        "rising": [],
+        "declining": [],
+        "new": [],
+        "hot_streak": None
     }
 
+    # Analyze each category
+    for name, data in categories.items():
+        counts = data.get("daily_counts", [])
+        dates = data.get("daily_dates", [])
 
-def get_category_sparklines(weeks: int = 8) -> dict[str, str]:
-    """
-    Generate text-based sparklines for each category over recent weeks.
-    Returns: {"agent": "▁▃▅▇█▇▅▃", "voice_ai": "▁▁▃▅▇██▇"}
-    """
-    data = _load_json(CATEGORIES_PATH, {})
-    sorted_weeks = sorted(data.keys())[-weeks:]
-
-    if not sorted_weeks:
-        return {}
-
-    # Collect all categories
-    all_cats = set()
-    for week in sorted_weeks:
-        all_cats.update(data[week].keys())
-
-    sparklines = {}
-    spark_chars = "▁▂▃▄▅▆▇█"
-
-    for cat in all_cats:
-        values = [data[week].get(cat, 0) for week in sorted_weeks]
-        max_val = max(values) if values else 1
-        if max_val == 0:
-            sparklines[cat] = "▁" * len(values)
+        if not counts:
             continue
 
-        # Normalize to sparkline chars
-        line = ""
-        for v in values:
-            idx = min(int((v / max_val) * (len(spark_chars) - 1)), len(spark_chars) - 1)
-            line += spark_chars[idx]
+        # Filter to weeks_back window
+        recent_indices = [
+            i for i in range(len(dates))
+            if datetime.fromisoformat(dates[i]) > cutoff
+        ]
 
-        sparklines[cat] = line
+        if not recent_indices:
+            continue
+
+        recent_counts = [counts[i] for i in recent_indices]
+
+        # Check if new (only in this week)
+        week_ago = now - timedelta(days=7)
+        is_new = all(
+            datetime.fromisoformat(dates[i]) > week_ago
+            for i in recent_indices
+        )
+
+        if is_new and len(recent_indices) >= 3:
+            trends["new"].append(name)
+            continue
+
+        # Check momentum (first week vs last week)
+        if len(recent_counts) >= 2:
+            mid = len(recent_counts) // 2
+            first_half_avg = sum(recent_counts[:mid]) / mid
+            second_half_avg = sum(recent_counts[mid:]) / (len(recent_counts) - mid)
+
+            if second_half_avg > first_half_avg * 1.2:  # 20% growth
+                trends["rising"].append(name)
+            elif second_half_avg < first_half_avg * 0.8:  # 20% decline
+                trends["declining"].append(name)
+
+    # Find hot streak (longest consecutive days with count > median)
+    hot_streaks = []
+    for name, data in categories.items():
+        counts = data.get("daily_counts", [])
+        if len(counts) < 7:
+            continue
+
+        median = sorted(counts)[len(counts) // 2]
+        current_streak = 0
+        max_streak = 0
+
+        for count in counts[-14:]:  # Last 2 weeks
+            if count > median:
+                current_streak += 1
+                max_streak = max(max_streak, current_streak)
+            else:
+                current_streak = 0
+
+        if max_streak >= 3:  # At least 3 consecutive days
+            hot_streaks.append((name, max_streak))
+
+    if hot_streaks:
+        hot_streaks.sort(key=lambda x: x[1], reverse=True)
+        trends["hot_streak"] = hot_streaks[0][0]
+
+    return trends
+
+def get_category_sparklines(weeks_back=8) -> dict[str, list[int]]:
+    """
+    Get weekly item counts for each category for the past N weeks.
+
+    Returns dict mapping category name to list of weekly counts.
+    Example: {"AI": [5, 7, 9, 12, 8, 10, 14, 16], ...}
+    """
+    categories = _load_json(CATEGORIES_PATH, {})
+    sparklines = {}
+
+    now = datetime.now(timezone.utc)
+
+    for name, data in categories.items():
+        counts = data.get("daily_counts", [])
+        dates = data.get("daily_dates", [])
+
+        if not counts:
+            continue
+
+        # Aggregate into weeks
+        weeks = [0] * weeks_back
+        for i, date_str in enumerate(dates):
+            try:
+                date = datetime.fromisoformat(date_str)
+                days_back = (now - date).days
+                week_idx = days_back // 7
+                if 0 <= week_idx < weeks_back:
+                    weeks[weeks_back - 1 - week_idx] += counts[i]
+            except Exception as e:
+                log.error(f"Failed to parse date {date_str}: {e}")
+
+        if any(w > 0 for w in weeks):
+            sparklines[name] = weeks
 
     return sparklines
 
+def update_category_tracking(scored_items: list[dict]):
+    """
+    Update categories.json with today is item counts.
 
-def _calculate_streak(data: dict, sorted_weeks: list[str], category: str) -> int:
-    """Count consecutive weeks a category has been rising."""
-    streak = 0
-    for i in range(len(sorted_weeks) - 1, 0, -1):
-        curr = data[sorted_weeks[i]].get(category, 0)
-        prev = data[sorted_weeks[i - 1]].get(category, 0)
-        if curr > prev:
-            streak += 1
+    For each unique category in items:
+    - Get today is date
+    - Increment count for that date
+    - Maintain daily_counts and daily_dates lists
+    """
+    categories = _load_json(CATEGORIES_PATH, {})
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_iso = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    # Count items per category
+    category_counts = {}
+    for item in scored_items:
+        category = item.get("category", "General")
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+    # Update categories
+    for category, count in category_counts.items():
+        if category not in categories:
+            categories[category] = {
+                "daily_counts": [],
+                "daily_dates": [],
+                "created_at": today_iso
+            }
+
+        data = categories[category]
+
+        # Check if we already have an entry for today
+        dates = data.get("daily_dates", [])
+        counts = data.get("daily_counts", [])
+
+        if dates and dates[-1] == today_iso:
+            # Update today is count
+            counts[-1] = count
         else:
-            break
-    return streak
+            # Add new day
+            counts.append(count)
+            dates.append(today_iso)
 
+        # Keep only last 365 days to avoid unbounded growth
+        if len(counts) > 365:
+            counts = counts[-365:]
+            dates = dates[-365:]
 
-def _load_json(path, default):
+        data["daily_counts"] = counts
+        data["daily_dates"] = dates
+        data["last_updated"] = today_iso
+
+    _save_json(CATEGORIES_PATH, categories)
+    log.info(f"Updated tracking for {len(category_counts)} categories on {today}")
+
+def _load_json(path: Path, default) -> dict:
+    """Load JSON file with default fallback."""
     if not path.exists():
         return default
     try:
         with open(path, "r") as f:
             return json.load(f)
-    except (json.JSONDecodeError, KeyError):
+    except Exception as e:
+        log.error(f"Failed to load {path}: {e}")
         return default
+
+def _save_json(path: Path, data: dict):
+    """Save JSON to file."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        log.error(f"Failed to save {path}: {e}")

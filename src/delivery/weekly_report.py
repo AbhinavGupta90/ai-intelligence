@@ -1,11 +1,11 @@
 """
-Weekly intelligence report — generated every Sunday.
-Aggregates the week's data into trends, top builds, and predictions.
+Weekly digest report generator.
+Loads past 7 days of daily logs and generates a comprehensive HTML report.
 """
-
 import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
 from src.config import LOGS_DIR
 from src.persistence.knowledge_graph import get_trending_categories, get_prolific_builders
 from src.intelligence.trend_tracker import get_category_sparklines
@@ -18,174 +18,174 @@ from src.utils.logger import get_logger
 
 log = get_logger("delivery.weekly_report")
 
-
 async def generate_and_send_weekly_report():
-    """Compile and send the weekly intelligence report."""
-    log.info("generating_weekly_report")
+    """
+    Generate and send weekly report.
 
-    # Gather data from the past 7 days
-    week_items = _load_week_items()
-    if not week_items:
-        log.warning("no_data_for_weekly_report")
-        return
+    Workflow:
+    1. Load items from past 7 days of daily logs
+    2. Get trending categories
+    3. Get prolific builders
+    4. Get rising builders
+    5. Get breakout projects
+    6. Generate predictions
+    7. Get taste accuracy
+    8. Format HTML report
+    9. Send via Telegram
+    """
+    try:
+        log.info("Generating weekly report")
 
-    # Top 5 builds of the week
-    top_5 = sorted(week_items, key=lambda x: x.get("score", 0), reverse=True)[:5]
+        items = _load_week_items(days=7)
+        log.info(f"Loaded {len(items)} items from past 7 days")
 
-    # Category trends
-    trends = get_trending_categories(weeks=4)
+        trends = get_trending_categories()
+        log.info(f"Found {len(trends.get('rising', []))} rising categories")
 
-    # Prolific builders
-    prolific = get_prolific_builders(min_appearances=2)
+        builders = get_prolific_builders(limit=10)
+        log.info(f"Found {len(builders)} prolific builders")
 
-    # Weekly stats
-    total_scanned = sum(d.get("pipeline_stats", {}).get("total_scanned", 0) for d in _load_week_logs())
-    total_delivered = len(week_items)
+        rising = get_rising_builders(limit=10)
+        log.info(f"Found {len(rising)} rising builders")
 
-    # Taste accuracy
-    taste = get_taste_accuracy()
+        projects = get_breakout_projects(days=7)
+        log.info(f"Found {len(projects)} breakout projects")
 
-    # Generate insight using Claude (if available)
-    insight = await _generate_weekly_insight(top_5, trends)
+        predictions = generate_predictions(items, horizon_days=7)
+        log.info(f"Generated {len(predictions)} predictions")
 
-    # Format the report
-    now = datetime.now(timezone.utc)
-    week_start = (now - timedelta(days=7)).strftime("%B %d")
-    week_end = now.strftime("%B %d, %Y")
+        taste_acc = get_taste_accuracy()
+        log.info(f"Taste accuracy: {taste_acc}")
 
-    lines = [
-        f"📊 <b>AI Weekly Intelligence — {week_start} - {week_end}</b>",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        "",
-        "🏆 <b>TOP 5 BUILDS OF THE WEEK:</b>",
-    ]
+        report_html = _format_weekly_report(
+            items, trends, builders, rising, projects, predictions, taste_acc
+        )
 
-    for i, item in enumerate(top_5, 1):
-        title = _esc(item.get("title", "Unknown")[:70])
-        score = item.get("score", 0)
-        why = _esc(item.get("why_interesting", "")[:100])
-        lines.append(f"{i}. <b>{title}</b> ⭐{score}")
-        if why:
-            lines.append(f"   — {why}")
+        await send_telegram_message(report_html)
+        log.info("Sent weekly report via Telegram")
 
-    lines.extend(["", "📈 <b>RISING CATEGORIES (vs last week):</b>"])
-    for r in trends.get("rising", []):
-        lines.append(f"- {r['category']}: {r['from']} → {r['to']} (+{r['change_pct']}%) 🔥")
+    except Exception as e:
+        log.error(f"Failed to generate weekly report: {e}", exc_info=True)
+        raise
 
-    if trends.get("declining"):
-        lines.extend(["", "📉 <b>DECLINING:</b>"])
-        for d in trends["declining"]:
-            lines.append(f"- {d['category']}: {d['from']} → {d['to']} ({d['change_pct']}%)")
+def _load_week_items(days=7) -> list[dict]:
+    """
+    Load items from daily logs for the past N days.
 
-    if trends.get("new"):
-        lines.extend(["", "🆕 <b>NEW CATEGORY EMERGED:</b>"])
-        for n in trends["new"]:
-            lines.append(f"- \"{n['category']}\" — {n['count']} posts this week")
-
-    if prolific:
-        lines.extend(["", "👤 <b>PROLIFIC BUILDERS:</b>"])
-        for b in prolific[:5]:
-            projects = ", ".join(b["projects"][:2])
-            lines.append(f"- {_esc(b['name'])}: {b['appearances']} appearances — {_esc(projects)}")
-
-    # Breakout projects (cross-source traction)
-    breakouts = get_breakout_projects()
-    if breakouts:
-        lines.extend(["", "💙 <b>BREAKOUT PROJECTS:</b>"])
-        for bp in breakouts[:3]:
-            lines.append(f"- {_esc(bp['title'][:60])} — {bp['reason']} ({', '.join(bp['sources'])})")
-
-    # Rising builders (new faces shipping quality)
-    rising = get_rising_builders()
-    if rising:
-        lines.extend(["", "🌟 <b>RISING BUILDERS (new this fortnight):</b>"])
-        for rb in rising[:3]:
-            projects = ", ".join(rb["projects"][:2])
-            lines.append(f"- {_esc(rb['name'])} — avg ⭐{rb['avg_score']} — {_esc(projects)}")
-
-    if insight:
-        lines.extend(["", "💡 <b>WEEKLY INSIGHT:</b>", f"<i>{_esc(insight)}</i>"])
-
-    # Predictions
-    predictions = await generate_predictions()
-    if predictions:
-        lines.extend(["", "🔮 <b>PREDICTIONS:</b>"])
-        for pred in predictions[:3]:
-            conf = pred.get("confidence", "medium")
-            conf_emoji = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(conf, "⚪")
-            lines.append(f"{conf_emoji} {_esc(pred.get('prediction', '')[:150])}")
-            if pred.get("timeframe"):
-                lines.append(f"   ⏱️ {pred['timeframe']}")
-
-    # Category sparklines
-    sparklines = get_category_sparklines(weeks=8)
-    if sparklines:
-        lines.extend(["", "📈 <b>CATEGORY TRENDS (8 weeks):</b>"])
-        for cat, spark in sorted(sparklines.items(), key=lambda x: -len(x[1].replace("▁", ""))):
-            lines.append(f"  {cat}: {spark}")
-            if len(lines) > 80:  # Keep message size reasonable
-                break
-
-    lines.extend([
-        "",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"📊 STATS: {total_scanned:,} posts scanned | {total_delivered} delivered",
-    ])
-
-    if taste is not None:
-        lines.append(f"🎯 Taste Accuracy: {taste:.0%}")
-
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-    text = "\n".join(lines)
-    await send_telegram_message(text)
-    log.info("weekly_report_sent")
-
-
-async def _generate_weekly_insight(top_items: list[dict], trends: dict) -> str:
-    """Use LLM (Gemini free / Anthropic) to generate a 2-3 sentence weekly insight."""
-    from src.utils.llm import generate
-
-    context = json.dumps({
-        "top_builds": [{"title": i.get("title", ""), "category": i.get("category", "")} for i in top_items],
-        "rising": trends.get("rising", []),
-        "declining": trends.get("declining", []),
-    }, indent=2)
-
-    result = await generate(
-        prompt=f"Based on this week's AI build data, write a 2-3 sentence insight about the most interesting trend. Be specific and opinionated:\n{context}",
-        max_tokens=200,
-    )
-    return result or ""
-
-
-def _load_week_items() -> list[dict]:
-    """Load all scored items from the past 7 days."""
+    Returns list of flattened items (each item is a dict with score, title, url, etc.).
+    """
     items = []
-    for log_data in _load_week_logs():
-        items.extend(log_data.get("items", []))
+    now = datetime.now(timezone.utc)
+
+    for i in range(days):
+        date = now - timedelta(days=i)
+        log_file = LOGS_DIR / f"{date.strftime('%Y-%m-%d')}.json"
+
+        if not log_file.exists():
+            log.warning(f"Daily log not found: {log_file}")
+            continue
+
+        try:
+            with open(log_file, "r") as f:
+                data = json.load(f)
+                # data is {"items": [...], "stats": {...}}
+                items.extend(data.get("items", []))
+        except Exception as e:
+            log.error(f"Failed to load {log_file}: {e}")
+
     return items
 
+def _format_weekly_report(
+    items: list[dict],
+    trends: dict,
+    builders: list[dict],
+    rising: list[dict],
+    projects: list[dict],
+    predictions: list[dict],
+    taste_accuracy: float
+) -> str:
+    """
+    Format weekly report as HTML for Telegram.
 
-def _load_week_logs() -> list[dict]:
-    """Load daily log JSON files from the past 7 days."""
-    logs = []
-    now = datetime.now(timezone.utc)
+    Returns HTML string with:
+    - Top 10 items of the week
+    - Category trends (rising, declining, new, hot streak)
+    - Prolific builders
+    - Rising builders
+    - Breakout projects
+    - Predictions
+    - Taste accuracy
+    """
+    # Sort items by score
+    items_sorted = sorted(items, key=lambda x: x.get("final_score", 0), reverse=True)
+    top_items = items_sorted[:10]
 
-    for day_offset in range(7):
-        date = now - timedelta(days=day_offset)
-        month_dir = LOGS_DIR / date.strftime("%Y-%m")
-        json_path = month_dir / f"{date.strftime('%Y-%m-%d')}.json"
+    html = "<b>Weekly Digest Report</b>\n\n"
 
-        if json_path.exists():
-            try:
-                with open(json_path, "r") as f:
-                    logs.append(json.load(f))
-            except json.JSONDecodeError:
-                continue
+    # Top items
+    html += "<b>Top Items of the Week (\U0001f525)</b>\n"
+    for i, item in enumerate(top_items, 1):
+        title = item.get("title", "Untitled")
+        url = item.get("url", "")
+        score = item.get("final_score", 0)
+        html += f"{i}. <a href=\"{url}\">{title}</a> (Score: {score:.1f})\n"
+    html += "\n"
 
-    return logs
+    # Category trends
+    html += "<b>Category Trends (\U0001f4ca)</b>\n"
+    rising_cats = trends.get("rising", [])
+    declining_cats = trends.get("declining", [])
+    new_cats = trends.get("new", [])
+    hot_streak = trends.get("hot_streak")
 
+    if rising_cats:
+        html += f"Rising: {', '.join(rising_cats[:5])}\n"
+    if declining_cats:
+        html += f"Declining: {', '.join(declining_cats[:5])}\n"
+    if new_cats:
+        html += f"New: {', '.join(new_cats[:5])}\n"
+    if hot_streak:
+        html += f"Hot streak: {hot_streak}\n"
+    html += "\n"
 
-def _esc(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Prolific builders
+    if builders:
+        html += "<b>Top Builders (\U0001f468\U0001f3fb\u200d\U0001f4bb)</b>\n"
+        for builder in builders[:5]:
+            name = builder.get("name", "Unknown")
+            count = builder.get("item_count", 0)
+            html += f"- {name} ({count} items)\n"
+        html += "\n"
+
+    # Rising builders
+    if rising:
+        html += "<b>Rising Builders (\U0001f3ad)</b>\n"
+        for builder in rising[:5]:
+            name = builder.get("name", "Unknown")
+            trend = builder.get("trend", 0)
+            html += f"- {name} (trend: {trend:+.1f})\n"
+        html += "\n"
+
+    # Breakout projects
+    if projects:
+        html += "<b>Breakout Projects (\U0001f681)</b>\n"
+        for proj in projects[:5]:
+            name = proj.get("name", "Unknown")
+            momentum = proj.get("momentum", 0)
+            html += f"- {name} (momentum: {momentum:.1f})\n"
+        html += "\n"
+
+    # Predictions
+    if predictions:
+        html += "<b>Predictions for Next Week (\U0001f52e)</b>\n"
+        for pred in predictions[:5]:
+            category = pred.get("category", "Unknown")
+            confidence = pred.get("confidence", 0)
+            direction = "\U0001f4c8" if pred.get("direction") == "up" else "\U0001f4c9"
+            html += f"{direction} {category} (confidence: {confidence:.0%})\n"
+        html += "\n"
+
+    # Taste accuracy
+    html += f"<b>Taste Model Accuracy (\U0001f3af)</b>: {taste_accuracy:.1%}\n"
+
+    return html
