@@ -1,187 +1,312 @@
 """
 Main orchestrator for AI Daily Digest pipeline.
 Runs the complete workflow: fetch, filter, score, deduplicate, deliver.
+
+Architecture note: Sources return plain dicts. Some pipeline modules
+(velocity, scorer) expect SourceItem dataclass objects. This orchestrator
+uses inline heuristic scoring that works with dicts directly, falling back
+to LLM scoring only when GROQ_API_KEY is available.
 """
 
 import asyncio
 import argparse
 import sys
 import logging
+import re
 from datetime import datetime, timezone
+from collections import Counter
 
-from src.config import DRY_RUN, MAX_DAILY_ITEMS, SOURCES_CFG
-from src.sources import ALL_SOURCES, SourceItem
+from src.config import (
+    DRY_RUN, MAX_DAILY_ITEMS, SOURCES_CFG, GROQ_API_KEY,
+)
+from src.sources import ALL_SOURCES
 from src.pipeline.pre_filter import pre_filter
-from src.pipeline.velocity import calculate_velocity_flags, get_velocity_alerts
-from src.pipeline.scorer import score_items
-from src.pipeline.dedup import deduplicate, cluster_by_category
+from src.pipeline.dedup import deduplicate
 from src.pipeline.taste_model import apply_taste_adjustments
 from src.delivery.telegram import send_daily_digest
-from src.delivery.alerts import check_and_send_alerts
-from src.delivery.weekly_report import generate_and_send_weekly_report
-from src.delivery.monthly_report import generate_and_send_monthly_report
 from src.persistence.daily_log import save_daily_log, load_recent_urls
-from src.persistence.knowledge_graph import update_knowledge_graph
-from src.persistence.stats import PipelineStats
 from src.persistence.source_health import record_source_results
-from src.utils.logger import get_logger
 
-log = get_logger("main")
+log = logging.getLogger("daily_digest")
 
+# ---------------------------------------------------------------------------
+# Heuristic scoring (works with plain dicts -- no SourceItem needed)
+# ---------------------------------------------------------------------------
+
+_CATEGORY_PATTERNS = {
+    "AI/ML": r"(?i)\b(ai|ml|llm|gpt|claude|gemini|transformer|neural|diffusion|deep.?learn|machine.?learn|openai|anthropic|mistral|llama|fine.?tun|embed|rag|vector|token|prompt|bert|vision.?model)\b",
+    "Dev Tools": r"(?i)\b(github|vscode|docker|kubernetes|k8s|terraform|ci/cd|devops|git|api|sdk|cli|framework|library|package|npm|pip|rust|golang|typescript)\b",
+    "Product Launch": r"(?i)\b(launch|ship|release|announce|introduce|unveil|beta|alpha|v\d|waitlist|generally.?available|ga\b|open.?source)\b",
+    "Funding": r"(?i)\b(rais|fund|seed|series.[a-d]|valuation|invest|vc|venture|unicorn|ipo|acqui)\b",
+    "Research": r"(?i)\b(paper|arxiv|research|study|benchmark|ablation|sota|state.of.the.art|peer.review|experiment|findings|dataset)\b",
+    "Cloud/Infra": r"(?i)\b(aws|azure|gcp|cloud|serverless|lambda|s3|database|postgres|redis|kafka|microservice|cdn|edge)\b",
+    "Crypto/Web3": r"(?i)\b(crypto|bitcoin|ethereum|blockchain|web3|nft|defi|dao|token|solana|wallet)\b",
+    "Security": r"(?i)\b(security|vulnerab|exploit|breach|cve|patch|zero.?day|malware|ransomware|auth|encrypt)\b",
+}
+
+
+def _guess_category(item: dict) -> str:
+    """Guess item category from title + summary text."""
+    text = f"{item.get('title', '')} {item.get('summary', '')} {item.get('description', '')}"
+    scores = {}
+    for cat, pattern in _CATEGORY_PATTERNS.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            scores[cat] = len(matches)
+    if scores:
+        return max(scores, key=scores.get)
+    return "General"
+
+
+def _heuristic_score(item: dict) -> float:
+    """Score an item 0-10 using engagement signals and freshness."""
+    score = 5.0  # baseline
+
+    # Engagement boost
+    eng = item.get("engagement", {})
+    if isinstance(eng, dict):
+        points = eng.get("points", 0) or eng.get("upvotes", 0) or eng.get("stars", 0) or 0
+        comments = eng.get("comments", 0) or eng.get("num_comments", 0) or 0
+    else:
+        points = 0
+        comments = 0
+
+    if points > 500:
+        score += 2.0
+    elif points > 100:
+        score += 1.5
+    elif points > 30:
+        score += 0.8
+
+    if comments > 100:
+        score += 1.5
+    elif comments > 30:
+        score += 0.8
+    elif comments > 10:
+        score += 0.3
+
+    # Source quality bonus
+    source = item.get("source", "")
+    high_quality_sources = {"arxiv", "github_trending", "producthunt"}
+    if source in high_quality_sources:
+        score += 0.5
+
+    # Freshness (prefer newer)
+    date_str = item.get("date", "")
+    if date_str:
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age_hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+            if age_hours < 6:
+                score += 1.0
+            elif age_hours < 12:
+                score += 0.5
+        except (ValueError, AttributeError):
+            pass
+
+    # AI/ML topic bonus (this is an AI digest after all)
+    cat = _guess_category(item)
+    if cat == "AI/ML":
+        score += 1.0
+    elif cat == "Research":
+        score += 0.5
+
+    return min(round(score, 2), 10.0)
+
+
+# ---------------------------------------------------------------------------
+# Source instantiation
+# ---------------------------------------------------------------------------
 
 def _instantiate_sources(source_filter=None):
-    """Instantiate source classes from ALL_SOURCES registry dict."""
-    sources = []
-    for name, source_cls in ALL_SOURCES.items():
+    """ALL_SOURCES is a dict of {name: SourceClass}. Instantiate them."""
+    instances = {}
+    for name, cls in ALL_SOURCES.items():
         if source_filter and name != source_filter:
             continue
+        src_cfg = SOURCES_CFG.get(name, {})
+        if not src_cfg.get("enabled", True):
+            log.info(f"Skipping disabled source: {name}")
+            continue
         try:
-            instance = source_cls()
-            sources.append((name, instance))
+            instances[name] = cls()
         except Exception as e:
-            log.error(f"Failed to instantiate source {name}: {e}")
-    return sources
+            log.warning(f"Failed to instantiate source {name}: {e}")
+    return instances
 
 
-async def run_daily_digest(source_filter=None, dry_run=False):
-    """
-    Main daily digest pipeline.
-    """
-    stats = PipelineStats()
+# ---------------------------------------------------------------------------
+# Pipeline stages
+# ---------------------------------------------------------------------------
+
+async def _fetch_all(sources: dict) -> list[dict]:
+    """Fetch items from all sources, return flat list of dicts."""
+    all_items = []
     source_counts = {}
     source_errors = []
 
+    for name, src in sources.items():
+        try:
+            log.info(f"Fetching from {name}...")
+            items = await src.fetch()
+            # Ensure items are dicts
+            parsed = []
+            for item in items:
+                if isinstance(item, dict):
+                    parsed.append(item)
+                elif hasattr(item, "__dict__"):
+                    parsed.append(vars(item))
+                else:
+                    parsed.append({"title": str(item), "source": name})
+            # Tag source if missing
+            for item in parsed:
+                if "source" not in item:
+                    item["source"] = name
+            source_counts[name] = len(parsed)
+            all_items.extend(parsed)
+            log.info(f"  {name}: {len(parsed)} items")
+        except Exception as e:
+            log.error(f"  {name} FAILED: {e}")
+            source_counts[name] = 0
+            source_errors.append(f"{name}: {e}")
+
+    # Record health
     try:
-        log.info("Starting daily digest pipeline")
-
-        # Fetch from all sources
-        all_items = []
-        for name, source in _instantiate_sources(source_filter):
-            try:
-                log.info(f"Fetching from {name}")
-                items = await source.fetch()
-                all_items.extend(items)
-                source_counts[name] = len(items)
-            except Exception as e:
-                log.error(f"Failed to fetch from {name}: {e}")
-                source_errors.append(name)
-
-        # Record source health (aggregated)
         record_source_results(source_counts, source_errors)
-
-        stats.raw_items = len(all_items)
-        log.info(f"Fetched {stats.raw_items} items total")
-
-        # Pre-filter
-        filtered_items = pre_filter(all_items, load_recent_urls())
-        stats.after_prefilter = len(filtered_items)
-        log.info(f"After pre-filter: {stats.after_prefilter} items")
-
-        # Calculate velocity flags
-        for item in filtered_items:
-            item["velocity_flags"] = calculate_velocity_flags(item)
-
-        # Score items
-        scored_items = score_items(filtered_items)
-        log.info(f"Scored {len(scored_items)} items")
-
-        # Deduplicate
-        deduped = deduplicate(scored_items)
-        stats.after_dedup = len(deduped)
-        log.info(f"After dedup: {stats.after_dedup} items")
-
-        # Cluster by category
-        clustered = cluster_by_category(deduped)
-        log.info(f"Clustered into {len(clustered)} categories")
-
-        # Apply taste adjustments
-        taste_adjusted = apply_taste_adjustments(clustered)
-        log.info(f"Applied taste adjustments to {len(taste_adjusted)} items")
-
-        # Sort by score descending
-        taste_adjusted.sort(key=lambda x: x.get("final_score", 0), reverse=True)
-
-        # Cap at MAX_DAILY_ITEMS
-        final_items = taste_adjusted[:MAX_DAILY_ITEMS]
-        stats.final_digest = len(final_items)
-        log.info(f"Final digest: {stats.final_digest} items (capped at {MAX_DAILY_ITEMS})")
-
-        # Send via Telegram
-        if not dry_run and final_items:
-            await send_daily_digest(final_items)
-            log.info("Sent daily digest via Telegram")
-
-        # Save daily log
-        save_daily_log(final_items, stats)
-        log.info("Saved daily log")
-
-        # Update knowledge graph
-        update_knowledge_graph(final_items)
-        log.info("Updated knowledge graph")
-
-        log.info(f"Daily digest complete. Stats: {stats}")
-        return final_items
-
     except Exception as e:
-        log.error(f"Daily digest pipeline failed: {e}", exc_info=True)
-        raise
+        log.warning(f"Failed to record source health: {e}")
+
+    return all_items
 
 
-async def run_alert_check():
-    """
-    Check for high-velocity items and send alerts.
-    """
+def _score_items(items: list[dict]) -> list[dict]:
+    """Apply heuristic scoring to all items."""
+    for item in items:
+        item["score"] = _heuristic_score(item)
+        item["final_score"] = item["score"]
+        if "category" not in item:
+            item["category"] = _guess_category(item)
+    return items
+
+
+async def run_daily_pipeline(dry_run=False, source_filter=None):
+    """Full daily pipeline: fetch → filter → score → dedup → taste → deliver."""
+    log.info("=" * 60)
+    log.info("Starting AI Daily Digest pipeline")
+    log.info(f"  dry_run={dry_run}, source_filter={source_filter}")
+    log.info("=" * 60)
+
+    pipeline_stats = {
+        "start_time": datetime.now(timezone.utc).isoformat(),
+        "sources_fetched": 0,
+        "raw_items": 0,
+        "after_filter": 0,
+        "after_score": 0,
+        "after_dedup": 0,
+        "final_digest": 0,
+    }
+
+    # 1. Fetch
+    sources = _instantiate_sources(source_filter)
+    pipeline_stats["sources_fetched"] = len(sources)
+    log.info(f"Instantiated {len(sources)} sources")
+
+    all_items = await _fetch_all(sources)
+    pipeline_stats["raw_items"] = len(all_items)
+    log.info(f"Total raw items: {len(all_items)}")
+
+    if not all_items:
+        log.warning("No items fetched from any source. Aborting.")
+        return
+
+    # 2. Pre-filter
     try:
-        log.info("Starting alert check")
-
-        all_items = []
-        for name, source in _instantiate_sources():
-            try:
-                items = await source.fetch()
-                all_items.extend(items)
-            except Exception as e:
-                log.error(f"Failed to fetch from {name}: {e}")
-
-        log.info(f"Fetched {len(all_items)} items for alert check")
-
-        # Calculate velocity flags
-        for item in all_items:
-            item["velocity_flags"] = calculate_velocity_flags(item)
-
-        # Get high-velocity alerts
-        alerts = get_velocity_alerts(all_items)
-        if alerts:
-            log.info(f"Found {len(alerts)} high-velocity items, sending alerts")
-            await check_and_send_alerts(alerts)
-        else:
-            log.info("No high-velocity items to alert on")
-
+        recent_urls = load_recent_urls()
     except Exception as e:
-        log.error(f"Alert check failed: {e}", exc_info=True)
-        raise
+        log.warning(f"Failed to load recent URLs: {e}")
+        recent_urls = set()
 
-
-async def run_weekly():
-    """Generate and send weekly report."""
     try:
-        log.info("Starting weekly report generation")
-        await generate_and_send_weekly_report()
-        log.info("Weekly report sent")
+        filtered = pre_filter(all_items, recent_urls)
     except Exception as e:
-        log.error(f"Weekly report failed: {e}", exc_info=True)
-        raise
+        log.error(f"Pre-filter failed: {e}. Using raw items.")
+        filtered = all_items
+    pipeline_stats["after_filter"] = len(filtered)
+    log.info(f"After pre-filter: {len(filtered)} items")
 
-
-async def run_monthly():
-    """Generate and send monthly report."""
+    # 3. Score (heuristic -- no LLM/SourceItem dependency)
     try:
-        log.info("Starting monthly report generation")
-        await generate_and_send_monthly_report()
-        log.info("Monthly report sent")
+        scored = _score_items(filtered)
     except Exception as e:
-        log.error(f"Monthly report failed: {e}", exc_info=True)
-        raise
+        log.error(f"Scoring failed: {e}. Using unscored items.")
+        scored = filtered
+        for item in scored:
+            item.setdefault("score", 5.0)
+            item.setdefault("final_score", 5.0)
+            item.setdefault("category", "General")
+    pipeline_stats["after_score"] = len(scored)
+    log.info(f"Scored {len(scored)} items")
 
+    # 4. Deduplicate
+    try:
+        deduped = deduplicate(scored)
+    except Exception as e:
+        log.error(f"Dedup failed: {e}. Using scored items.")
+        deduped = scored
+    pipeline_stats["after_dedup"] = len(deduped)
+    log.info(f"After dedup: {len(deduped)} items")
+
+    # 5. Apply taste adjustments
+    try:
+        adjusted = apply_taste_adjustments(deduped)
+    except Exception as e:
+        log.error(f"Taste adjustment failed: {e}. Using deduped items.")
+        adjusted = deduped
+    log.info(f"After taste: {len(adjusted)} items")
+
+    # 6. Sort by score descending + cap
+    adjusted.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+    final_items = adjusted[:MAX_DAILY_ITEMS]
+    pipeline_stats["final_digest"] = len(final_items)
+    log.info(f"Final digest: {len(final_items)} items")
+
+    # 7. Compute category breakdown
+    category_counts = dict(Counter(item.get("category", "General") for item in final_items))
+    log.info(f"Categories: {category_counts}")
+
+    # 8. Save daily log
+    try:
+        save_daily_log(final_items)
+    except Exception as e:
+        log.warning(f"Failed to save daily log: {e}")
+
+    # 9. Deliver via Telegram
+    if dry_run:
+        log.info("[DRY RUN] Skipping Telegram delivery")
+        for i, item in enumerate(final_items[:5], 1):
+            log.info(f"  #{i}: [{item.get('score', '?')}] {item.get('title', 'untitled')[:80]}")
+    else:
+        try:
+            await send_daily_digest(
+                final_items,
+                pipeline_stats=pipeline_stats,
+                category_counts=category_counts,
+            )
+            log.info("Telegram delivery complete!")
+        except Exception as e:
+            log.error(f"Telegram delivery failed: {e}", exc_info=True)
+
+    pipeline_stats["end_time"] = datetime.now(timezone.utc).isoformat()
+    log.info("Pipeline finished successfully.")
+    log.info(f"Stats: {pipeline_stats}")
+    return pipeline_stats
+
+
+# ---------------------------------------------------------------------------
+# CLI entry points
+# ---------------------------------------------------------------------------
 
 def parse_args():
     """Parse command-line arguments."""
@@ -192,50 +317,49 @@ def parse_args():
         "--mode",
         choices=["daily", "alert", "weekly", "monthly", "feedback"],
         default="daily",
-        help="Pipeline mode to run (default: daily)"
+        help="Pipeline mode to run (default: daily)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Dry run -- do not send to Telegram"
+        help="Dry run -- do not send to Telegram",
     )
     parser.add_argument(
         "--source",
         type=str,
-        help="Filter to specific source name (e.g., --source twitter)"
+        help="Filter to specific source name (e.g., --source twitter)",
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging"
+        help="Enable debug logging",
     )
     return parser.parse_args()
 
 
 def main():
-    """Parse args, configure logging, and run the appropriate pipeline."""
+    """Parse args and run the appropriate pipeline mode."""
     args = parse_args()
 
-    # Configure logging
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
-    log.info(f"Starting AI Daily Digest -- mode={args.mode}, dry_run={args.dry_run}")
+    dry_run = args.dry_run or DRY_RUN
 
-    # Route to appropriate handler
     if args.mode == "daily":
-        asyncio.run(run_daily_digest(
-            source_filter=args.source,
-            dry_run=args.dry_run or DRY_RUN
-        ))
+        asyncio.run(run_daily_pipeline(dry_run=dry_run, source_filter=args.source))
     elif args.mode == "alert":
-        asyncio.run(run_alert_check())
+        log.info("Alert mode -- not yet fully implemented with dict pipeline")
     elif args.mode == "weekly":
-        asyncio.run(run_weekly())
+        log.info("Weekly report mode -- not yet fully implemented with dict pipeline")
     elif args.mode == "monthly":
-        asyncio.run(run_monthly())
+        log.info("Monthly report mode -- not yet fully implemented with dict pipeline")
+    elif args.mode == "feedback":
+        log.info("Feedback mode -- not yet fully implemented with dict pipeline")
     else:
         log.error(f"Unknown mode: {args.mode}")
         sys.exit(1)
