@@ -60,9 +60,98 @@ def _score_bar(score: float) -> str:
     return "\u2588" * filled + "\u2591" * empty
 
 
+def _humanize_number(n):
+    """Convert number to human readable: 1500 -> 1.5K"""
+    if not n or not isinstance(n, (int, float)):
+        return ""
+    if n >= 1000000:
+        return f"{n/1000000:.1f}M"
+    if n >= 1000:
+        return f"{n/1000:.1f}K"
+    return str(int(n))
+
+
+def _build_hinglish_summary(item: dict) -> str:
+    """Build a Hinglish description with engagement context."""
+    parts = []
+    source = item.get("source", "")
+    eng = item.get("engagement", {})
+    if not isinstance(eng, dict):
+        eng = {}
+
+    # Extract engagement numbers
+    points = eng.get("points", 0) or eng.get("upvotes", 0) or eng.get("stars", 0) or 0
+    comments = eng.get("comments", 0) or eng.get("num_comments", 0) or 0
+    stars_today = eng.get("stars_today", 0) or eng.get("today_stars", 0) or 0
+    total_stars = eng.get("total_stars", 0) or eng.get("stars", 0) or 0
+
+    # Raw description from source
+    desc = item.get("summary", "") or item.get("description", "")
+    if desc:
+        desc = desc[:120].strip()
+        if len(item.get("summary", "") or item.get("description", "")) > 120:
+            desc += "..."
+
+    # Source-specific Hinglish context
+    if source == "github_trending":
+        if stars_today and stars_today > 0:
+            parts.append(f"Aaj +{_humanize_number(stars_today)} stars mile")
+        if total_stars and total_stars > 0:
+            parts.append(f"total {_humanize_number(total_stars)} stars")
+        if desc:
+            parts.append(desc)
+        if stars_today and stars_today > 500:
+            parts.append("-- kaafi viral ho raha hai!")
+        elif stars_today and stars_today > 100:
+            parts.append("-- trending pe hai")
+
+    elif source == "hackernews":
+        if points and points > 0:
+            parts.append(f"{_humanize_number(points)} points")
+        if comments and comments > 0:
+            parts.append(f"{comments} comments")
+        if points and points > 300:
+            parts.append("-- HN pe top story hai")
+        elif points and points > 100:
+            parts.append("-- acchi discussion chal rahi")
+        if desc:
+            parts.append(desc)
+
+    elif source == "arxiv":
+        if desc:
+            parts.append(desc)
+        parts.append("-- naya research paper")
+
+    elif source == "devto":
+        if points and points > 0:
+            parts.append(f"{_humanize_number(points)} reactions")
+        if desc:
+            parts.append(desc)
+
+    elif source == "producthunt":
+        if points and points > 0:
+            parts.append(f"{_humanize_number(points)} upvotes")
+        if desc:
+            parts.append(desc)
+        parts.append("-- naya product launch")
+
+    else:
+        # Generic
+        if points and points > 0:
+            parts.append(f"{_humanize_number(points)} engagement")
+        if desc:
+            parts.append(desc)
+
+    if not parts and desc:
+        parts.append(desc)
+
+    separator = " | "
+    return separator.join(parts) if parts else ""
+
+
 def _format_item(rank: int, item: dict) -> str:
     """Format a single digest item as a readable Telegram message block."""
-    # Rank emoji or number
+   # Rank emoji or number
     rank_str = RANK_EMOJI.get(rank, f"<b>#{rank}</b>")
 
     # Category emoji
@@ -92,16 +181,14 @@ def _format_item(rank: int, item: dict) -> str:
     separator = " \u2022 "
     meta_line = f"   {separator.join(meta_parts)}"
 
-    # Summary (first 150 chars)
-    summary = item.get("summary", "") or item.get("description", "")
-    if summary:
-        summary = _escape_html(summary[:150].strip())
-        if len(item.get("summary", "") or item.get("description", "")) > 150:
-            summary += "..."
+    # Hinglish summary with engagement context
+    hinglish_desc = _build_hinglish_summary(item)
+    if hinglish_desc:
+        hinglish_desc = _escape_html(hinglish_desc)
 
     lines = [title_line, score_line, meta_line]
-    if summary:
-        lines.append(f"   {summary}")
+    if hinglish_desc:
+        lines.append(f"   {hinglish_desc}")
 
     return "\n".join(lines)
 
