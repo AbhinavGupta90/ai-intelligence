@@ -1,0 +1,254 @@
+{
+  "https://github.com/NousResearch/hermes-agent": {
+    "title": "NousResearch/hermes-agent \u2014 The agent that grows with you",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      8.8
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/thedotmack/claude-mem": {
+    "title": "thedotmack/claude-mem \u2014 A Claude Code plugin that automatically captures everyth",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      8.5
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/multica-ai/multica": {
+    "title": "multica-ai/multica \u2014 The open-source managed agents platform. Turn coding agents",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      8.5
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/virattt/ai-hedge-fund": {
+    "title": "virattt/ai-hedge-fund \u2014 An AI Hedge Fund Team",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      8.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/ChromeDevTools/chrome-devtools-mcp": {
+    "title": "ChromeDevTools/chrome-devtools-mcp \u2014 Chrome DevTools for coding agents",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      7.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/coleam00/Archon": {
+    "title": "coleam00/Archon \u2014 The first open-source harness builder for AI coding. Make AI c",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      7.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/snarktank/ralph": {
+    "title": "snarktank/ralph \u2014 Ralph is an autonomous AI agent loop that runs repeatedly unti",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      7.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/rustfs/rustfs": {
+    "title": "rustfs/rustfs \u2014 \ud83d\ude802.3x faster than MinIO for 4KB object payloads. RustFS is an op",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      7.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/vllm-project/vllm": {
+    "title": "vllm-project/vllm \u2014 A high-throughput and memory-efficient inference and serving",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/Tracer-Cloud/opensre": {
+    "title": "Tracer-Cloud/opensre \u2014 Build your own AI SRE agents. The open source toolkit for",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/alirezarezvani/claude-skills": {
+    "title": "alirezarezvani/claude-skills \u2014 232+ Claude Code skills &amp; agent plugins for C",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/pablodelucca/pixel-agents": {
+    "title": "pablodelucca/pixel-agents \u2014 Pixel office.",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/diegosouzapw/OmniRoute": {
+    "title": "diegosouzapw/OmniRoute \u2014 OmniRoute is an AI gateway for multi-provider LLMs: an ",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/vercel-labs/skills": {
+    "title": "vercel-labs/skills \u2014 The open agent skills tool - npx skills",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/danielmiessler/Personal_AI_Infrastructure": {
+    "title": "danielmiessler/Personal_AI_Infrastructure \u2014 Agentic AI Infrastructure for magnif",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/servo/servo": {
+    "title": "servo/servo \u2014 Servo aims to empower developers with a lightweight, high-performa",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/superradcompany/microsandbox": {
+    "title": "superradcompany/microsandbox \u2014 \ud83e\uddf1 secure, local, cross-platform and programmable ",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/katanemo/plano": {
+    "title": "katanemo/plano \u2014 Plano is an AI-native proxy and data plane for agentic apps \u2014 w",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/raphaelmansuy/edgequake": {
+    "title": "raphaelmansuy/edgequake \u2014 EdegQuake \ud83c\udf0b High-performance GraphRAG inspired from Li",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/nearai/ironclaw": {
+    "title": "nearai/ironclaw \u2014 IronClaw is OpenClaw inspired implementation in Rust focused o",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  },
+  "https://github.com/fastrepl/char": {
+    "title": "fastrepl/char \u2014 AI notepad for meetings",
+    "first_seen": "2026-04-15",
+    "mentions": 1,
+    "score_trend": [
+      6.0
+    ],
+    "sources": [
+      "github_trending"
+    ],
+    "category": "other"
+  }
+}

@@ -1,0 +1,15 @@
+# Core
+httpx>=0.27.0
+groq>=0.11.0                   # FREE Llama 3.3 70B — primary LLM backend
+anthropic>=0.40.0              # Paid fallback (optional)
+pyyaml>=6.0
+structlog>=24.0.0
+
+# Fuzzy matching for dedup
+rapidfuzz>=3.9.0
+
+# Telegram bot (for feedback handler)
+python-telegram-bot>=20.0
+
+# Typing extensions (Python 3.11 compat)
+typing-extensions>=4.0

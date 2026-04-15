@@ -1,0 +1,41 @@
+name: Real-time Alert Check
+
+on:
+  schedule:
+    # Every 4 hours: 4:30 UTC, 8:30, 12:30, 16:30, 20:30
+    - cron: '30 4,8,12,16,20 * * *'
+  workflow_dispatch:
+
+env:
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+jobs:
+  alert-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run alert check
+        run: python -m src.main --mode alert
+
+      - name: Commit alert state
+        run: |
+          git config user.name "AI Intelligence Bot"
+          git config user.email "bot@ai-intelligence.local"
+          git add logs/ || true
+          git diff --cached --quiet || git commit -m "🚨 Alert state update — $(date -u +%Y-%m-%dT%H:%M)"
+          git push || true

@@ -1,0 +1,19 @@
+# Environment
+.env
+*.pyc
+__pycache__/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Don't ignore logs and knowledge — they're the compound value
+# logs/
+# knowledge/
+# feedback.json

@@ -1,0 +1,12 @@
+{
+  "thumbs_up": [],
+  "thumbs_down": [],
+  "taste_profile": {
+    "preferred_categories": [],
+    "disliked_categories": [],
+    "keyword_boosts": [],
+    "keyword_penalties": [],
+    "preferred_builders": [],
+    "total_feedback": 0
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "daily": {
+    "2026-04-14": {
+      "success": {
+        "reddit": 45,
+        "hackernews": 12
+      },
+      "failed": [
+        "arxiv"
+      ],
+      "timestamp": "2026-04-14T23:08:43.395658+00:00"
+    },
+    "2026-04-15": {
+      "success": {
+        "github_trending": 21
+      },
+      "failed": [],
+      "timestamp": "2026-04-15T02:19:44.545703+00:00"
+    }
+  },
+  "streaks": {
+    "reddit": {
+      "consecutive_failures": 0,
+      "last_success": "2026-04-14"
+    },
+    "arxiv": {
+      "consecutive_failures": 0,
+      "last_success": "never"
+    },
+    "hackernews": {
+      "consecutive_failures": 0,
+      "last_success": "2026-04-14"
+    },
+    "github_trending": {
+      "consecutive_failures": 0,
+      "last_success": "2026-04-15"
+    }
+  }
+}

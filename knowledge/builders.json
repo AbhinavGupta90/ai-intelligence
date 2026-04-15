@@ -1,0 +1,296 @@
+{
+  "NousResearch": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      8.8
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "NousResearch/hermes-agent \u2014 The agent that grows with you"
+    ],
+    "avg_score": 8.8
+  },
+  "thedotmack": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      8.5
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "thedotmack/claude-mem \u2014 A Claude Code plugin that automatically captures everyth"
+    ],
+    "avg_score": 8.5
+  },
+  "multica-ai": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      8.5
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "multica-ai/multica \u2014 The open-source managed agents platform. Turn coding agents"
+    ],
+    "avg_score": 8.5
+  },
+  "virattt": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      8.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "virattt/ai-hedge-fund \u2014 An AI Hedge Fund Team"
+    ],
+    "avg_score": 8.0
+  },
+  "ChromeDevTools": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      7.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "ChromeDevTools/chrome-devtools-mcp \u2014 Chrome DevTools for coding agents"
+    ],
+    "avg_score": 7.0
+  },
+  "coleam00": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      7.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "coleam00/Archon \u2014 The first open-source harness builder for AI coding. Make AI c"
+    ],
+    "avg_score": 7.0
+  },
+  "snarktank": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      7.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "snarktank/ralph \u2014 Ralph is an autonomous AI agent loop that runs repeatedly unti"
+    ],
+    "avg_score": 7.0
+  },
+  "rustfs": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      7.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "rustfs/rustfs \u2014 \ud83d\ude802.3x faster than MinIO for 4KB object payloads. RustFS is an op"
+    ],
+    "avg_score": 7.0
+  },
+  "vllm-project": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "vllm-project/vllm \u2014 A high-throughput and memory-efficient inference and serving"
+    ],
+    "avg_score": 6.0
+  },
+  "Tracer-Cloud": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "Tracer-Cloud/opensre \u2014 Build your own AI SRE agents. The open source toolkit for"
+    ],
+    "avg_score": 6.0
+  },
+  "alirezarezvani": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "alirezarezvani/claude-skills \u2014 232+ Claude Code skills &amp; agent plugins for C"
+    ],
+    "avg_score": 6.0
+  },
+  "pablodelucca": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "pablodelucca/pixel-agents \u2014 Pixel office."
+    ],
+    "avg_score": 6.0
+  },
+  "diegosouzapw": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "diegosouzapw/OmniRoute \u2014 OmniRoute is an AI gateway for multi-provider LLMs: an "
+    ],
+    "avg_score": 6.0
+  },
+  "vercel-labs": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "vercel-labs/skills \u2014 The open agent skills tool - npx skills"
+    ],
+    "avg_score": 6.0
+  },
+  "danielmiessler": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "danielmiessler/Personal_AI_Infrastructure \u2014 Agentic AI Infrastructure for magnif"
+    ],
+    "avg_score": 6.0
+  },
+  "servo": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "servo/servo \u2014 Servo aims to empower developers with a lightweight, high-performa"
+    ],
+    "avg_score": 6.0
+  },
+  "superradcompany": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "superradcompany/microsandbox \u2014 \ud83e\uddf1 secure, local, cross-platform and programmable "
+    ],
+    "avg_score": 6.0
+  },
+  "katanemo": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "katanemo/plano \u2014 Plano is an AI-native proxy and data plane for agentic apps \u2014 w"
+    ],
+    "avg_score": 6.0
+  },
+  "raphaelmansuy": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "raphaelmansuy/edgequake \u2014 EdegQuake \ud83c\udf0b High-performance GraphRAG inspired from Li"
+    ],
+    "avg_score": 6.0
+  },
+  "nearai": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "nearai/ironclaw \u2014 IronClaw is OpenClaw inspired implementation in Rust focused o"
+    ],
+    "avg_score": 6.0
+  },
+  "fastrepl": {
+    "first_seen": "2026-04-15",
+    "appearances": 1,
+    "scores": [
+      6.0
+    ],
+    "categories": [
+      "other"
+    ],
+    "projects": [
+      "fastrepl/char \u2014 AI notepad for meetings"
+    ],
+    "avg_score": 6.0
+  }
+}

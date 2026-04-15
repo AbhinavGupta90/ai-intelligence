@@ -1,0 +1,121 @@
+# ============================================
+# AI Intelligence System Configuration
+# ============================================
+
+general:
+  timezone: "Asia/Kolkata"
+  daily_digest_time: "06:00"          # IST
+  realtime_check_interval_hours: 4
+  max_daily_items: 10
+  max_realtime_alerts_per_day: 2
+  dry_run: false
+
+sources:
+  reddit:
+    enabled: true
+    subreddits:
+      - ChatGPT
+      - LocalLLaMA
+      - artificial
+      - MachineLearning
+      - SideProject
+      - singularity
+    min_upvotes: 50
+    time_filter: "day"
+
+  hackernews:
+    enabled: true
+    min_points: 10
+    include_show_hn: true
+
+  producthunt:
+    enabled: true
+    min_upvotes: 20
+    ai_tags_only: true
+
+  github_trending:
+    enabled: true
+    languages: ["python", "typescript", "rust"]
+    min_stars_today: 10
+
+  twitter:
+    enabled: true
+    hashtags: ["BuildWithAI", "AItools"]
+    min_likes: 50
+
+  arxiv:
+    enabled: true
+    categories: ["cs.AI", "cs.CL", "cs.CV"]
+    must_have_code: true
+
+  devto:
+    enabled: true
+    min_reactions: 30
+
+  youtube:
+    enabled: true
+    min_views_per_hour: 100
+
+  huggingface:
+    enabled: true
+    trending_only: true
+
+scoring:
+  weights:
+    novelty: 0.35
+    technical_depth: 0.25
+    wow_factor: 0.25
+    practical_value: 0.15
+  min_score_to_deliver: 8.0
+  min_score_for_alert: 9.5
+  batch_size: 25
+  bonuses:
+    has_demo: 0.5
+    is_open_source: 0.5
+    first_time_builder: 0.5
+    high_velocity: 0.3
+
+velocity:
+  window_hours: 6
+  alert_percentile: 99.9
+
+taste_model:
+  enabled: true
+  min_feedback_to_activate: 20
+  recalculate_day: "sunday"
+  boost_amount: 0.5
+  penalty_amount: -0.5
+
+delivery:
+  telegram:
+    enabled: true
+    parse_mode: "HTML"
+    disable_preview: true
+    feedback_buttons: true
+  email:
+    enabled: false
+
+reports:
+  weekly:
+    enabled: true
+    day: "sunday"
+    time: "09:00"
+  monthly:
+    enabled: true
+    day: 1
+    time: "09:00"
+
+persistence:
+  daily_logs: true
+  knowledge_graph: true
+  auto_commit_to_repo: true
+  log_format: "json+markdown"
+
+error_handling:
+  source_max_retries: 2
+  source_retry_delay_seconds: 30
+  claude_max_retries: 3
+  claude_retry_backoff: "exponential"
+  telegram_max_retries: 2
+  alert_on_total_failure: true
+  continue_on_source_failure: true

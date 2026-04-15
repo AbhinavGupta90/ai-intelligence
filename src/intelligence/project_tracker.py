@@ -1,0 +1,95 @@
+"""
+Project tracker â€” monitors project momentum over time.
+Detects projects gaining cross-source traction and score trends.
+"""
+
+import json
+from datetime import datetime, timezone, timedelta
+from src.config import KNOWLEDGE_DIR
+from src.utils.logger import get_logger
+
+log = get_logger("intelligence.project_tracker")
+
+PROJECTS_PATH = KNOWLEDGE_DIR / "projects.json"
+
+
+def get_trending_projects(min_mentions: int = 2) -> list[dict]:
+    """
+    Find projects mentioned across multiple sources or multiple days.
+    Cross-source traction = strong signal.
+    """
+    projects = _load_json(PROJECTS_PATH, {})
+    trending = []
+
+    for url, data in projects.items():
+        if data.get("mentions", 0) >= min_mentions:
+            scores = data.get("score_trend", [])
+            trending.append({
+                "title": data.get("title", "Unknown"),
+                "url": url,
+                "mentions": data["mentions"],
+                "sources": data.get("sources", []),
+                "category": data.get("category", "other"),
+                "latest_score": scores[-1] if scores else 0,
+                "score_trend": _trend_direction(scores),
+                "first_seen": data.get("first_seen", ""),
+            })
+
+    trending.sort(key=lambda x: (-x["mentions"], -x["latest_score"]))
+    return trending[:10]
+
+
+def get_breakout_projects() -> list[dict]:
+    """
+    Projects that went from 1 mention to 3+ quickly,
+    or appeared on 3+ different sources.
+    """
+    projects = _load_json(PROJECTS_PATH, {})
+    breakouts = []
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    for url, data in projects.items():
+        sources = data.get("sources", [])
+        mentions = data.get("mentions", 0)
+        first_seen = data.get("first_seen", "2020-01-01")
+
+        # Cross-source: 3+ different sources
+        if len(sources) >= 3:
+            breakouts.append({
+                "title": data.get("title", "Unknown"),
+                "url": url,
+                "sources": sources,
+                "mentions": mentions,
+                "reason": f"Appeared on {len(sources)} sources",
+            })
+        # Recent + fast mentions
+        elif first_seen >= cutoff and mentions >= 3:
+            breakouts.append({
+                "title": data.get("title", "Unknown"),
+                "url": url,
+                "sources": sources,
+                "mentions": mentions,
+                "reason": f"{mentions} mentions in first week",
+            })
+
+    breakouts.sort(key=lambda x: -x["mentions"])
+    return breakouts[:5]
+
+
+def get_project_stats() -> dict:
+    """Summary stats about tracked projects."""
+    projects = _load_json(PROJECTS_PATH, {})
+    if not projects:
+        return {"total": 0, "multi_mention": 0, "multi_source": 0}
+
+    return {
+        "total": len(projects),
+        "multi_mention": sum(1 for p in projects.values() if p.get("mentions", 0) >= 2),
+        "multi_source": sum(1 for p in projects.values() if len(p.get("sources", [])) >= 2),
+    }
+
+
+def _trend_direction(scores: list[float]) -> str:
+    """Simple trend: rising, falling, or stable."""
+   !¥˜±•¸¡Í½É•Ì¤€ð€Èè(€€€€€€€É•ÑÕÉ¸€‰¹•Üˆ(€€€É••¹Ð€ôÍ½É•Íl´Åt(€€€½±‘•È€ôÍ½É•ÍlÁt(€€€¥˜É••¹Ð€ø½±‘•È€¨€Ä¸Äè(€€€€€€€É•ÑÕÉ¸€‰É¥Í¥¹œˆ(€€€•±¥˜É••¹Ð€ð½±‘•È€¨€À¸äè(€€€€€€€É•ÑÕÉ¸€‰™…±±¥¹œˆ(€€€É•ÑÕÉ¸€‰ÍÑ…‰±”ˆ(()‘•˜}±½…‘}©Í½¸¡Á…Ñ °‘•™…Õ±Ð¤è(€€€¥˜¹½ÐÁ…Ñ ¹•á¥ÍÑÌ ¤è(€€€€€€€É•ÑÕÉ¸‘•™…Õ±Ð(€€€ÑÉäè(€€€€€€€Ý¥Ñ ½Á•¸¡Á…Ñ °€‰Èˆ¤…Ì˜è(€€€€€€€€€€€É•ÑÕÉ¸©Í½¸¹±½…¡˜¤(€€€•á•ÁÐ€¡©Í½¸¹)M=9•½‘•ÉÉ½È°-•åÉÉ½È¤è(€€€€€€€É•ÑÕÉ¸‘•™…Õ±Ð(
