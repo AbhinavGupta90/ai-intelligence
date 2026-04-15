@@ -2,6 +2,7 @@
 Main orchestrator for AI Daily Digest pipeline.
 Runs the complete workflow: fetch, filter, score, deduplicate, deliver.
 """
+
 import asyncio
 import argparse
 import sys
@@ -22,45 +23,51 @@ from src.delivery.monthly_report import generate_and_send_monthly_report
 from src.persistence.daily_log import save_daily_log, load_recent_urls
 from src.persistence.knowledge_graph import update_knowledge_graph
 from src.persistence.stats import PipelineStats
-from src.persistence.source_health import record_source_health
+from src.persistence.source_health import record_source_results
 from src.utils.logger import get_logger
 
 log = get_logger("main")
 
+
+def _instantiate_sources(source_filter=None):
+    """Instantiate source classes from ALL_SOURCES registry dict."""
+    sources = []
+    for name, source_cls in ALL_SOURCES.items():
+        if source_filter and name != source_filter:
+            continue
+        try:
+            instance = source_cls()
+            sources.append((name, instance))
+        except Exception as e:
+            log.error(f"Failed to instantiate source {name}: {e}")
+    return sources
+
+
 async def run_daily_digest(source_filter=None, dry_run=False):
     """
     Main daily digest pipeline.
-
-    Workflow:
-    1. Fetch from ALL_SOURCES (optionally filtered)
-    2. Pre-filter (remove spam, duplicates, old items)
-    3. Calculate velocity flags
-    4. Score items
-    5. Deduplicate
-    6. Cluster by category
-    7. Apply taste adjustments
-    8. Sort by score
-    9. Send digest via Telegram
-    10. Save daily log
-    11. Update knowledge graph
     """
     stats = PipelineStats()
+    source_counts = {}
+    source_errors = []
+
     try:
         log.info("Starting daily digest pipeline")
 
         # Fetch from all sources
         all_items = []
-        for source in ALL_SOURCES:
-            if source_filter and source.name != source_filter:
-                continue
+        for name, source in _instantiate_sources(source_filter):
             try:
-                log.info(f"Fetching from {source.name}")
+                log.info(f"Fetching from {name}")
                 items = await source.fetch()
                 all_items.extend(items)
-                record_source_health(source.name, success=True, item_count=len(items))
+                source_counts[name] = len(items)
             except Exception as e:
-                log.error(f"Failed to fetch from {source.name}: {e}")
-                record_source_health(source.name, success=False, error=str(e))
+                log.error(f"Failed to fetch from {name}: {e}")
+                source_errors.append(name)
+
+        # Record source health (aggregated)
+        record_source_results(source_counts, source_errors)
 
         stats.raw_items = len(all_items)
         log.info(f"Fetched {stats.raw_items} items total")
@@ -119,26 +126,21 @@ async def run_daily_digest(source_filter=None, dry_run=False):
         log.error(f"Daily digest pipeline failed: {e}", exc_info=True)
         raise
 
+
 async def run_alert_check():
     """
     Check for high-velocity items and send alerts.
-
-    Workflow:
-    1. Fetch from all sources
-    2. Calculate velocity flags
-    3. Find high-velocity items
-    4. Send alerts via check_and_send_alerts
     """
     try:
         log.info("Starting alert check")
 
         all_items = []
-        for source in ALL_SOURCES:
+        for name, source in _instantiate_sources():
             try:
                 items = await source.fetch()
                 all_items.extend(items)
             except Exception as e:
-                log.error(f"Failed to fetch from {source.name}: {e}")
+                log.error(f"Failed to fetch from {name}: {e}")
 
         log.info(f"Fetched {len(all_items)} items for alert check")
 
@@ -148,7 +150,6 @@ async def run_alert_check():
 
         # Get high-velocity alerts
         alerts = get_velocity_alerts(all_items)
-
         if alerts:
             log.info(f"Found {len(alerts)} high-velocity items, sending alerts")
             await check_and_send_alerts(alerts)
@@ -158,6 +159,7 @@ async def run_alert_check():
     except Exception as e:
         log.error(f"Alert check failed: {e}", exc_info=True)
         raise
+
 
 async def run_weekly():
     """Generate and send weekly report."""
@@ -169,6 +171,7 @@ async def run_weekly():
         log.error(f"Weekly report failed: {e}", exc_info=True)
         raise
 
+
 async def run_monthly():
     """Generate and send monthly report."""
     try:
@@ -178,6 +181,7 @@ async def run_monthly():
     except Exception as e:
         log.error(f"Monthly report failed: {e}", exc_info=True)
         raise
+
 
 def parse_args():
     """Parse command-line arguments."""
@@ -207,6 +211,7 @@ def parse_args():
     )
     return parser.parse_args()
 
+
 def main():
     """Parse args, configure logging, and run the appropriate pipeline."""
     args = parse_args()
@@ -234,6 +239,7 @@ def main():
     else:
         log.error(f"Unknown mode: {args.mode}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
