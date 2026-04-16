@@ -15,6 +15,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from collections import Counter
+import httpx
 
 from src.config import (
     DRY_RUN, MAX_DAILY_ITEMS, SOURCES_CFG, GROQ_API_KEY,
@@ -191,6 +192,82 @@ def _score_items(items: list[dict]) -> list[dict]:
     return items
 
 
+
+async def _generate_hinglish_summaries(items: list[dict]) -> list[dict]:
+    '''Use Groq LLM to generate short Hinglish descriptions for digest items.'''
+    if not GROQ_API_KEY:
+        log.warning('GROQ_API_KEY not set, skipping Hinglish summary generation')
+        return items
+
+    item_lines = []
+    for i, item in enumerate(items):
+        title = item.get('title', 'Untitled')[:100]
+        desc = item.get('summary', '') or item.get('description', '')
+        desc = desc[:150] if desc else ''
+        source = item.get('source', 'unknown')
+        cat = item.get('category', 'General')
+        item_lines.append(f'{i+1}. [{source}] [{cat}] {title} -- {desc}')
+
+    items_text = '\n'.join(item_lines)
+
+    prompt = f'''Tu ek AI tech news curator hai. Neeche {len(items)} tech stories hain.
+Har story ke liye ek SHORT Hinglish summary likh (max 25 words) jo:
+- Bataaye ye kya hai aur kyun important hai
+- Natural Hinglish use kare (Hindi + English mix)
+- Non-technical reader ko bhi samajh aaye
+
+Format: har line pe sirf number aur summary, kuch aur nahi.
+Example:
+1. Ye ek naya AI agent framework hai jo autonomous tasks handle karta hai, developers ke liye powerful tool
+2. Google ne apna naya LLM launch kiya, GPT-4 se compete karega, multimodal support ke saath
+
+Stories:
+{items_text}
+
+Summaries (sirf numbered lines, kuch aur mat likho):'''
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                headers={
+                    'Authorization': f'Bearer {GROQ_API_KEY}',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'model': 'llama-3.3-70b-versatile',
+                    'messages': [{'role': 'user', 'content': prompt}],
+                    'temperature': 0.4,
+                    'max_tokens': 1500,
+                },
+                timeout=30,
+            )
+            data = resp.json()
+            ai_content = data['choices'][0]['message']['content'].strip()
+
+            summaries = {}
+            for line in ai_content.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                match = re.match(r'^(\d+)[.\)]\s*(.+)', line)
+                if match:
+                    idx = int(match.group(1)) - 1
+                    summaries[idx] = match.group(2).strip()
+
+            applied = 0
+            for i, item in enumerate(items):
+                if i in summaries:
+                    item['hinglish_summary'] = summaries[i]
+                    applied += 1
+
+            log.info(f'Generated {applied}/{len(items)} Hinglish summaries via Groq')
+
+    except Exception as e:
+        log.warning(f'Hinglish summary generation failed: {e}')
+
+    return items
+
 async def run_daily_pipeline(dry_run=False, source_filter=None):
     """Full daily pipeline: fetch → filter → score → dedup → taste → deliver."""
     log.info("=" * 60)
@@ -265,6 +342,12 @@ async def run_daily_pipeline(dry_run=False, source_filter=None):
         log.error(f"Taste adjustment failed: {e}. Using deduped items.")
         adjusted = deduped
     log.info(f"After taste: {len(adjusted)} items")
+
+    # 5.5 Generate Hinglish summaries via Groq
+    try:
+        adjusted = await _generate_hinglish_summaries(adjusted)
+    except Exception as e:
+        log.warning(f"Hinglish summary step failed: {e}")
 
     # 6. Sort by score descending + cap
     adjusted.sort(key=lambda x: x.get("final_score", 0), reverse=True)

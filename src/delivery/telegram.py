@@ -72,7 +72,8 @@ def _humanize_number(n):
 
 
 def _build_hinglish_summary(item: dict) -> str:
-    """Build a Hinglish description with engagement context."""
+    """Build a Hinglish description with engagement context.
+    Prefers AI-generated hinglish_summary if available."""
     parts = []
     source = item.get("source", "")
     eng = item.get("engagement", {})
@@ -85,14 +86,20 @@ def _build_hinglish_summary(item: dict) -> str:
     stars_today = eng.get("stars_today", 0) or eng.get("today_stars", 0) or 0
     total_stars = eng.get("total_stars", 0) or eng.get("stars", 0) or 0
 
-    # Raw description from source
-    desc = item.get("summary", "") or item.get("description", "")
-    if desc:
-        desc = desc[:120].strip()
-        if len(item.get("summary", "") or item.get("description", "")) > 120:
-            desc += "..."
+    # Use AI-generated Hinglish summary if available
+    ai_desc = item.get("hinglish_summary", "")
 
-    # Source-specific Hinglish context
+    # Fallback to raw description
+    raw_desc = item.get("summary", "") or item.get("description", "")
+    if raw_desc:
+        raw_desc = raw_desc[:120].strip()
+        if len(item.get("summary", "") or item.get("description", "")) > 120:
+            raw_desc += "..."
+
+    # Pick the best description available
+    desc = ai_desc if ai_desc else raw_desc
+
+    # Source-specific engagement context + description
     if source == "github_trending":
         if stars_today and stars_today > 0:
             parts.append(f"Aaj +{_humanize_number(stars_today)} stars mile")
@@ -100,27 +107,30 @@ def _build_hinglish_summary(item: dict) -> str:
             parts.append(f"total {_humanize_number(total_stars)} stars")
         if desc:
             parts.append(desc)
-        if stars_today and stars_today > 500:
-            parts.append("-- kaafi viral ho raha hai!")
-        elif stars_today and stars_today > 100:
-            parts.append("-- trending pe hai")
+        if not ai_desc:
+            if stars_today and stars_today > 500:
+                parts.append("-- kaafi viral ho raha hai!")
+            elif stars_today and stars_today > 100:
+                parts.append("-- trending pe hai")
 
     elif source == "hackernews":
         if points and points > 0:
             parts.append(f"{_humanize_number(points)} points")
         if comments and comments > 0:
             parts.append(f"{comments} comments")
-        if points and points > 300:
-            parts.append("-- HN pe top story hai")
-        elif points and points > 100:
-            parts.append("-- acchi discussion chal rahi")
+        if not ai_desc:
+            if points and points > 300:
+                parts.append("-- HN pe top story hai")
+            elif points and points > 100:
+                parts.append("-- acchi discussion chal rahi")
         if desc:
             parts.append(desc)
 
     elif source == "arxiv":
         if desc:
             parts.append(desc)
-        parts.append("-- naya research paper")
+        if not ai_desc:
+            parts.append("-- naya research paper")
 
     elif source == "devto":
         if points and points > 0:
@@ -133,7 +143,8 @@ def _build_hinglish_summary(item: dict) -> str:
             parts.append(f"{_humanize_number(points)} upvotes")
         if desc:
             parts.append(desc)
-        parts.append("-- naya product launch")
+        if not ai_desc:
+            parts.append("-- naya product launch")
 
     else:
         # Generic
@@ -151,7 +162,7 @@ def _build_hinglish_summary(item: dict) -> str:
 
 def _format_item(rank: int, item: dict) -> str:
     """Format a single digest item as a readable Telegram message block."""
-   # Rank emoji or number
+    # Rank emoji or number
     rank_str = RANK_EMOJI.get(rank, f"<b>#{rank}</b>")
 
     # Category emoji
