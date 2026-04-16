@@ -210,16 +210,18 @@ async def _generate_hinglish_summaries(items: list[dict]) -> list[dict]:
 
     items_text = '\n'.join(item_lines)
 
-    prompt = f'''Tu ek AI tech news curator hai. Neeche {len(items)} tech stories hain.
-Har story ke liye ek SHORT Hinglish summary likh (max 25 words) jo:
-- Bataaye ye kya hai aur kyun important hai
-- Natural Hinglish use kare (Hindi + English mix)
-- Non-technical reader ko bhi samajh aaye
+    prompt = f'''Tu ek senior AI tech journalist hai jo Hinglish mein likhta hai. Neeche {len(items)} tech stories hain.
+Har story ke liye ek DETAILED Hinglish summary likh (40-50 words) jo:
+- Clearly explain kare ye tool/product/news ACTUALLY kya hai aur kya karta hai
+- Kyun important hai ya kisko useful hoga wo bataaye
+- Real-world use case ya impact mention kare
+- Natural Hinglish use kare (Hindi + English mix, jaise colleague ko samjha rahe ho)
+- Technical terms allowed hain but simple language mein wrap karo
 
 Format: har line pe sirf number aur summary, kuch aur nahi.
 Example:
-1. Ye ek naya AI agent framework hai jo autonomous tasks handle karta hai, developers ke liye powerful tool
-2. Google ne apna naya LLM launch kiya, GPT-4 se compete karega, multimodal support ke saath
+1. Ye ek AI-powered hedge fund framework hai jo stock trading decisions khud leta hai using multiple AI agents. Har agent alag strategy follow karta hai -- koi sentiment analyze karta hai, koi technical analysis. Open-source hai toh apna trading bot bana sakte ho.
+2. Google ka naya tool hai jo kisi bhi file ka type detect karta hai AI se -- chahe extension galat ho ya file corrupt. Security teams ke liye game-changer hai kyunki malware detection mein bahut kaam aayega.
 
 Stories:
 {items_text}
@@ -238,9 +240,9 @@ Summaries (sirf numbered lines, kuch aur mat likho):'''
                     'model': 'llama-3.3-70b-versatile',
                     'messages': [{'role': 'user', 'content': prompt}],
                     'temperature': 0.4,
-                    'max_tokens': 1500,
+                    'max_tokens': 3000,
                 },
-                timeout=30,
+                timeout=60,
             )
             data = resp.json()
             ai_content = data['choices'][0]['message']['content'].strip()
